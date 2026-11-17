@@ -20,10 +20,8 @@ from frontdesk.queue.triggers import Trigger
 from frontdesk.seed import BARBERSHOP
 from frontdesk.worker.handler import WorkerDeps, handle
 from tests.conftest import Database
-from tests.support import PRICES, say
+from tests.support import IN_SCOPE, PRICES, say
 from tests.tools.conftest import NOW
-
-IN_SCOPE = says('{"in_scope": true}')
 
 
 @pytest.fixture

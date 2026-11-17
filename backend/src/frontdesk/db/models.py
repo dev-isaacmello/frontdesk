@@ -143,6 +143,23 @@ class Conversation(Base):
     channel_account_id: Mapped[UUID]
     customer_id: Mapped[UUID]
     last_inbound_at: Mapped[datetime]
+    mode: Mapped[str] = mapped_column(server_default="agent")
+    lease_epoch: Mapped[int] = mapped_column(server_default="0")
+    lease_until: Mapped[datetime | None]
+
+
+class Handoff(Base):
+    """A conversation that went to a person, and why."""
+
+    __tablename__ = "handoffs"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    conversation_id: Mapped[UUID]
+    turn_id: Mapped[UUID | None]
+    reason: Mapped[str]
+    opened_at: Mapped[datetime]
+    resolved_at: Mapped[datetime | None]
 
 
 class InboundEvent(Base):

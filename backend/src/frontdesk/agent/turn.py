@@ -22,7 +22,14 @@ class TurnInput:
     history: list[HistoryMessage]
 
 
+type HandoffReason = Literal[
+    "customer_asked", "agent_failed", "guardrail_blocked", "turn_limit", "budget_exhausted"
+]
+
+
 @dataclass(frozen=True)
 class TurnResult:
-    outcome: Literal["replied", "refused"]
+    outcome: Literal["replied", "refused", "handoff"]
     reply: str
+    handoff_reason: HandoffReason | None = None
+    """Why the conversation goes to a person. Set when the outcome is handoff."""

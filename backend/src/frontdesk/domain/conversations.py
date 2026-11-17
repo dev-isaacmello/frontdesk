@@ -12,7 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from frontdesk.agent.turn import HistoryMessage, TurnInput, TurnResult
 from frontdesk.channels.port import OutboundMessage
 from frontdesk.db.models import ChannelAccount as ChannelAccountRow
-from frontdesk.db.models import Conversation, CustomerIdentity, InboundEvent, Message, Turn
+from frontdesk.db.models import (
+    Conversation,
+    CustomerIdentity,
+    Handoff,
+    InboundEvent,
+    Message,
+    Turn,
+)
 from frontdesk.domain.customers import Channel, ChannelIdentity, identify_customer
 
 _HISTORY_WINDOW = 20
@@ -143,14 +150,24 @@ async def open_turn(
         )
         if (await session.scalars(waiting.limit(1))).first() is None:
             return None
+        in_handoff = conversation.mode == "handoff"
         turn = Turn(
-            tenant_id=conversation.tenant_id, conversation_id=conversation_id, started_at=now
+            tenant_id=conversation.tenant_id,
+            conversation_id=conversation_id,
+            started_at=now,
+            # With a person in charge the agent stays silent. The messages are still
+            # taken, so that they stop waking the worker, and the panel shows them.
+            status="completed" if in_handoff else "running",
+            outcome="silent" if in_handoff else None,
+            finished_at=now if in_handoff else None,
         )
         session.add(turn)
         await session.flush()
         await session.execute(
             update(Message).where(Message.id.in_(waiting)).values(turn_id=turn.id)
         )
+        if in_handoff:
+            return None
 
     lines = await _lines(session, conversation_id)
     return TurnInput(
@@ -190,6 +207,19 @@ async def close_turn(
         .where(Turn.id == turn.turn_id)
         .values(status="completed", outcome=result.outcome, finished_at=now)
     )
+    if result.outcome == "handoff":
+        await session.execute(
+            update(Conversation).where(Conversation.id == conversation_id).values(mode="handoff")
+        )
+        session.add(
+            Handoff(
+                tenant_id=turn.tenant_id,
+                conversation_id=conversation_id,
+                turn_id=turn.turn_id,
+                reason=result.handoff_reason,
+                opened_at=now,
+            )
+        )
 
 
 async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[OutboundMessage]:

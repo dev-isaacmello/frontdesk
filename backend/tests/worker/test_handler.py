@@ -14,10 +14,9 @@ from frontdesk.providers.scripted import ScriptedProvider, calls, says
 from frontdesk.queue.triggers import Trigger
 from frontdesk.seed import BARBERSHOP
 from frontdesk.worker.handler import WorkerDeps, handle
-from tests.support import PRICES, RecordingSender, say
+from tests.support import IN_SCOPE, PRICES, RecordingSender, say
 from tests.tools.conftest import NOW
 
-IN_SCOPE = says('{"in_scope": true}')
 CORTE = BARBERSHOP.service_id("Corte")
 CAIO = BARBERSHOP.resource_id("Caio")
 

@@ -15,13 +15,11 @@ from frontdesk.providers.scripted import ScriptedProvider, ScriptExhaustedError,
 from frontdesk.seed import ARENA, BARBERSHOP, TenantSeed
 from frontdesk.tools.bookings import ListCustomerBookingsInput, list_customer_bookings
 from frontdesk.tools.context import ToolContext
-from tests.support import PRICES, start_turn
+from tests.support import IN_SCOPE, OUT_OF_SCOPE, PRICES, start_turn
 from tests.tools.conftest import NOW, customer_of
 
 CORTE = BARBERSHOP.service_id("Corte")
 CAIO = BARBERSHOP.resource_id("Caio")
-IN_SCOPE = says('{"in_scope": true}')
-OUT_OF_SCOPE = says('{"in_scope": false}')
 BOOK_CORTE_AT_TEN = {
     "service_id": str(CORTE),
     "resource_id": str(CAIO),

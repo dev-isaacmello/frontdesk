@@ -77,7 +77,9 @@ class OfflineProvider:
     async def complete(self, request: ModelRequest) -> ModelResponse:
         if request.output_schema is not None:
             customer_text = _normalize(request.messages[-1].content)
-            return _response(request, json.dumps({"in_scope": _in_scope(customer_text)}))
+            return _response(
+                request, json.dumps({"in_scope": _in_scope(customer_text), "wants_human": False})
+            )
         return _response(request, _next_step(_Conversation.read(request)))
 
 

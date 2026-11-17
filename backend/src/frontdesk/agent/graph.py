@@ -1,7 +1,8 @@
 """The turn as an explicit graph (docs/design/agent-graph.md).
 
     load_context -> classify -> plan <-> execute
-                            \\-> refuse
+               \\           \\-> refuse
+                \\-> handoff <-/
 
 The planner's last message, the one without tool calls, is the reply. Persisting it and
 sending it belong to the worker, so the graph knows nothing about channels.
@@ -15,9 +16,9 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, ConfigDict
 
-from frontdesk.agent import prompts
+from frontdesk.agent import intents, prompts
 from frontdesk.agent.tool_runner import run_tool_call
-from frontdesk.agent.turn import HistoryMessage, TurnInput, TurnResult
+from frontdesk.agent.turn import HandoffReason, HistoryMessage, TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.clock import to_local
 from frontdesk.domain.tenants import load_tenant, timezone_of
@@ -45,6 +46,7 @@ class Classification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     in_scope: bool
+    wants_human: bool
 
 
 class _State(TypedDict, total=False):
@@ -52,8 +54,9 @@ class _State(TypedDict, total=False):
     tenant_name: str
     plan_system: str
     in_scope: bool
+    handoff_reason: HandoffReason
     transcript: Annotated[list[Message], operator.add]
-    outcome: Literal["replied", "refused"]
+    outcome: Literal["replied", "refused", "handoff"]
     reply: str
 
 
@@ -63,7 +66,11 @@ async def run_turn(deps: AgentDeps, turn: TurnInput) -> TurnResult:
         config={"recursion_limit": _RECURSION_LIMIT},
         context=deps,
     )
-    return TurnResult(outcome=final["outcome"], reply=final["reply"])
+    return TurnResult(
+        outcome=final["outcome"],
+        reply=final["reply"],
+        handoff_reason=final.get("handoff_reason") if final["outcome"] == "handoff" else None,
+    )
 
 
 async def _load_context(state: _State, runtime: Runtime[AgentDeps]) -> _State:
@@ -71,11 +78,16 @@ async def _load_context(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     async with tenant_transaction(runtime.context.sessions, turn.tenant_id) as session:
         tenant = await load_tenant(session, turn.tenant_id)
     local_now = to_local(turn.now, timezone_of(tenant))
-    return {
+    context: _State = {
         "tenant_name": tenant.name,
         "plan_system": prompts.plan_prompt(tenant.name, local_now),
         "transcript": [*_history(turn), Message(role="user", content="\n".join(turn.messages))],
     }
+    # Decided here, by matching, so that no wording in the rest of the message and no
+    # answer of a model can keep a customer from reaching a person.
+    if intents.asks_for_a_person(turn.messages):
+        context["handoff_reason"] = "customer_asked"
+    return context
 
 
 async def _call_model(
@@ -110,7 +122,14 @@ async def _classify(state: _State, runtime: Runtime[AgentDeps]) -> _State:
             timeout_s=20,
         ),
     )
-    return {"in_scope": Classification.model_validate_json(response.text or "").in_scope}
+    classification = Classification.model_validate_json(response.text or "")
+    if classification.wants_human:
+        return {"in_scope": classification.in_scope, "handoff_reason": "customer_asked"}
+    return {"in_scope": classification.in_scope}
+
+
+async def _handoff(state: _State) -> _State:  # noqa: ARG001  a node is called with the state
+    return {"outcome": "handoff", "reply": prompts.HANDOFF_NOTICE}
 
 
 async def _refuse(state: _State) -> _State:
@@ -149,7 +168,13 @@ async def _execute(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     return {"transcript": results}
 
 
-def _after_classify(state: _State) -> Literal["plan", "refuse"]:
+def _after_context(state: _State) -> Literal["classify", "handoff"]:
+    return "handoff" if "handoff_reason" in state else "classify"
+
+
+def _after_classify(state: _State) -> Literal["plan", "refuse", "handoff"]:
+    if "handoff_reason" in state:
+        return "handoff"
     return "plan" if state["in_scope"] else "refuse"
 
 
@@ -167,12 +192,14 @@ def _build() -> StateGraph[_State, AgentDeps]:
     graph.add_node("load_context", _load_context)
     graph.add_node("classify", _classify)
     graph.add_node("refuse", _refuse)
+    graph.add_node("handoff", _handoff)
     graph.add_node("plan", _plan)
     graph.add_node("execute", _execute)
     graph.add_edge(START, "load_context")
-    graph.add_edge("load_context", "classify")
+    graph.add_conditional_edges("load_context", _after_context)
     graph.add_conditional_edges("classify", _after_classify)
     graph.add_edge("refuse", END)
+    graph.add_edge("handoff", END)
     graph.add_conditional_edges("plan", _after_plan, {"execute": "execute", "done": END})
     graph.add_edge("execute", "plan")
     return graph
