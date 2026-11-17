@@ -1,0 +1,101 @@
+# Data model
+
+Status: proposed in Phase 0, not implemented. Table names can still change; the constraints are the part I care about.
+
+One PostgreSQL 18 database (the current major, available on Azure Database for PostgreSQL flexible server) holds the domain, the knowledge base, the cost ledger and the agent checkpoints. Everything that belongs to a tenant carries `tenant_id` and sits behind row-level security. Times are `timestamptz` in UTC; each tenant has an IANA timezone used by business rules. Money for the business is integer cents in BRL. Model cost is integer micro-USD, because a single call costs a fraction of a cent.
+
+## Roles
+
+The schema is owned by a migration role that the running services never use. Row-level security is only real if the role that serves requests cannot bypass it, so I split four roles.
+
+- `frontdesk_owner` owns the tables and runs Alembic. It is not used at runtime.
+- `frontdesk_app` is the role of the api and the worker. It is not the owner, has no `BYPASSRLS`, and every tenant table has `FORCE ROW LEVEL SECURITY` as well, so even a mistake in ownership does not open the data.
+- `frontdesk_ops` has `BYPASSRLS` and is used only by cross-tenant jobs (retention, cost rollup, the demo kill switch). No request path connects with it.
+- `frontdesk_graph` owns the `graph` schema where the LangGraph checkpointer creates its own tables.
+
+## Tenant context
+
+The tenant is set per transaction with `select set_config('app.tenant_id', :tenant, true)`. The third argument makes it transaction-local, so it disappears at commit or rollback and cannot leak to the next checkout of a pooled connection. Policies read it with `nullif(current_setting('app.tenant_id', true), '')::uuid`. An unset or empty value compares as null and returns no rows, so the failure mode is an empty result, not another tenant's data.
+
+Two paths run before a tenant is known and need a controlled exception:
+
+- The webhook receives a provider phone number id and has to find the tenant. That lookup goes through one `SECURITY DEFINER` function, `resolve_channel_account(channel, external_id)`, which returns only the tenant id and the channel account id.
+- An event for an unknown phone number id is written to `unrouted_events`, a table without tenant, on which `frontdesk_app` has `INSERT` and nothing else.
+
+## Tables
+
+Tenancy and access
+
+- `tenants`: slug, name, timezone, plan, status, and a typed `policy` document (cancellation notice in minutes, whether off-hours requests may be sent for approval, handoff contact). The policy document is validated by a Pydantic model on write.
+- `users`: owner accounts, email unique per deployment, password hash. There is no self-service signup; users come from the seed.
+- `sessions`: opaque session token hash, user, expiry. The Next.js BFF holds the cookie; the browser never sees an API credential.
+- `channel_accounts`: tenant, channel (`whatsapp` or `webchat`), external id (the WhatsApp phone number id), unique on `(channel, external_id)`.
+
+Catalog and schedule
+
+- `resources`: what gets booked. A barber for the barbershop, a court for the arena.
+- `services`: name, duration in minutes, active flag. `service_resources` says which resources can deliver a service.
+- `service_prices`: price in cents with an optional weekday and time window. The arena charges more in the evening, the barbershop has one price per service. The price is never stored on the service itself, so "what does it cost" always has to be answered for a specific time.
+- `business_hours`: weekday, opens, closes, optionally per resource. `schedule_blocks`: a resource and a time range when it is unavailable.
+- `customers` and `customer_identities`: a customer has one or more channel identities, unique on `(tenant_id, channel, external_id)`. For WhatsApp the external id is the business-scoped user id, with the phone stored beside it when the provider sends it. Meta tells integrations to key on that id because the phone is omitted once a user adopts a username, and the id is regenerated when the user changes phone number, which arrives as a system message naming the previous id (see verificado.md). Keeping identities apart from the customer is what lets that event relink instead of creating a second customer.
+
+Bookings
+
+- `bookings`: customer, service, resource, `during tstzrange`, status (`confirmed`, `cancelled`), price snapshot in cents, the turn that created it, and an `idempotency_key`.
+
+Two constraints carry the guarantees, and both live in the database:
+
+```sql
+-- no two confirmed bookings overlap on the same resource
+alter table bookings add constraint bookings_no_overlap
+  exclude using gist (tenant_id with =, resource_id with =, during with &&)
+  where (status = 'confirmed');
+
+-- a retried turn cannot create the same booking twice
+create unique index bookings_idempotency on bookings (tenant_id, idempotency_key);
+```
+
+The idempotency key is `turn_id:tool_call_seq`, generated by the worker and never by the model. The exclusion constraint needs the `btree_gist` extension.
+
+Conversations
+
+- `inbound_events`: the raw provider event as received, signature result, received time, unique on `(channel_account_id, provider_message_id)`. This is the idempotency gate: a redelivered webhook fails the unique constraint and is acknowledged without enqueueing.
+- `conversations`: customer, channel account, mode (`agent`, `handoff`, `closed`), last inbound time (the WhatsApp service window is computed from it), consecutive failure count, and a processing lease (`lease_owner`, `lease_until`, `lease_epoch`).
+- `messages`: direction, author (`customer`, `agent`, `owner`, `system`), body, the turn it belongs to, and for outbound messages a send status, the provider message id and the channel cost in micro-USD with the version of the price table used. Outbound rows are unique on `(turn_id, seq)`; this table is the outbox.
+- `turns`: one unit of agent work over one or more inbound messages. Status (`running`, `awaiting_approval`, `completed`, `failed`, `handed_off`), attempt number, graph thread id, trace id, token totals, guardrail verdict. A partial unique index allows one `running` turn per conversation.
+- `turn_steps`: the node timeline of a turn (node, start, duration, outcome, small detail document). The panel builds its trace summary from this table, so the panel does not depend on any tracing vendor.
+- `tool_calls`: name, validated arguments, result, status, duration, linked to a step.
+- `model_calls`: node, provider, model id, input and output tokens, cached tokens, latency, cost in micro-USD and the version of the price table used. This is the cost ledger; per-conversation and per-tenant cost are sums over it.
+
+Human in the loop
+
+- `approval_requests`: conversation, turn, the validated tool call that is waiting, the policy rule that triggered it, status (`pending`, `approved`, `rejected`, `expired`), who decided and when. A partial unique index allows one pending request per conversation. A pending request does not hold the slot: when the owner approves, the tool validates again against the current schedule and can still fail.
+- `handoffs`: conversation, reason (`customer_asked`, `agent_failed_twice`, `guardrail_blocked`, `budget_exhausted`), opened and resolved times.
+
+Owner rules and knowledge
+
+- `house_rules`: append-only versions of the free text the owner writes. The latest version is the active one and is read at the start of every turn, which is what makes a rule valid on the next message.
+- `rule_findings`: for a rule version, each excerpt that contradicts the hard policy, with the policy clause it hits. The panel shows these.
+- `kb_documents` and `kb_chunks`: chunk text, `embedding vector(1024)`, and the id of the embedding model that produced it. A query made with a different embedding model than the one stored is refused instead of returning nonsense.
+
+Budget and operations
+
+- `tenant_budgets`: month, limit in micro-USD, current degradation level. Usage is computed from `model_calls`.
+- `system_flags`: deployment-wide switches such as the demo kill switch. No tenant, `frontdesk_ops` only for writes.
+- `graph.*`: the checkpointer tables, created by the library's own setup.
+
+## Ordering and exclusivity
+
+The queue gives ordering per conversation, but a queue alone does not give exclusivity: if a worker loses its session lock, which Service Bus documents as possible on a service update or a dropped connection, the trigger is delivered again while the first worker is still running. So the worker also takes the lease on the conversation row before it starts and increments `lease_epoch`. Every write a turn makes at the end checks that its epoch is still the current one. A worker that lost the lease cannot commit a stale turn.
+
+The queue message is a trigger, not the payload. It says "this conversation has unprocessed inbound messages". The worker reads all of them from Postgres after a short quiet window, which is how a burst of messages becomes one turn. A later trigger for messages that were already consumed finds nothing to do.
+
+## What RLS covers and what it does not
+
+Every table above with a `tenant_id` has the same pair of policies, `USING` and `WITH CHECK`, on the tenant setting. Foreign keys always include `tenant_id` in the referenced key, so a row cannot point at a row of another tenant even if the application tries.
+
+The checkpointer tables are the exception. They are created by the library, have no tenant column, and are keyed by thread id. The worker derives the thread id from the turn id on the server and never from client input. Whether a policy on a prefix of the thread id is worth adding is an open item for Phase 1.
+
+## Retention
+
+Checkpoints of completed turns are deleted after a few days; they exist for crash recovery and for pending approvals, not as history. Raw inbound events and message bodies have a retention period per deployment. The seed data is fictional, but the model treats phone numbers, names and message bodies as personal data from the start: they are masked in logs and never copied into metrics labels.
