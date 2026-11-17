@@ -45,6 +45,8 @@ Trusting the session lock for exclusivity. Wrong as soon as a lock is lost while
 
 Two mechanisms for one property, the session and the database lease, and I have to explain why both exist.
 
-Accepting a session is a connection of its own in the SDK, opened and closed around every turn. I do not know yet what that costs. Phase 1 measures it and this section gets the number.
+Accepting a session is a connection of its own in the Python SDK. Measured against the emulator with `azure-servicebus` 7.15.0, opening it takes about 0.46 s and closing it about 0.33 s, on every turn, in polling loops inside the SDK that I cannot tune. A waiting worker picks a new conversation up within about 60 ms, so the customer does not see the handshake, but each conversation in flight holds a worker slot for about 0.8 s beyond the turn itself. Throughput is therefore bounded by the worker's concurrency, and docs/medicoes.md has what that gave. Against a model call of seconds this is small; against the pipeline alone it is most of the time.
 
-Locally the queue is Microsoft's Service Bus emulator, which needs a SQL Server container, allows ten connections in all, reads its queues from a file and caps the delivery count at ten and the duplicate window at five minutes. Its fidelity for sessions and dead-lettering is not documented, so the ordering tests of Phase 1 run against it and the lease is what the correctness argument rests on.
+The SDK's sender is not safe to share between coroutines, so the API sends one message at a time through a lock. A contract test covers it because the first version failed there.
+
+Locally the queue is Microsoft's Service Bus emulator, which needs a SQL Server container of about 1 GB of memory, allows ten connections in all, reads its queues from a file and caps the delivery count at ten and the duplicate window at five minutes. Its fidelity for sessions and dead-lettering is not documented; the contract tests are what I know about it.

@@ -6,6 +6,36 @@ Every number in the README comes from an entry in this file. An entry has the da
 
 No measurement. Phase 0 is investigation and design; nothing runs yet. The figures in docs/design/cost-estimate.md are estimates from published prices and assumed token counts, and are labelled as such there. They are replaced by measured values in Phases 1, 4 and 5.
 
+## Phase 1, 2026-11-17: latency of the pipeline, without a model
+
+What was measured. The time from the moment the client starts sending a web chat message until the agent's reply arrives on the event stream of that conversation. The path is the real one over HTTP: signed POST to the API, row in the inbox, trigger on the queue, worker, graph with one tool call, outbox, PostgreSQL notification, server-sent event. Every message is a new conversation asking "quanto custa o corte?".
+
+What was not measured. A language model. The worker ran the offline model, which answers in microseconds, so these numbers are the cost of everything around the model and nothing else. Latency with a real model is still to be measured. The panel's server is also outside this measurement: the script signs requests itself and talks to the API directly. And the queue was Microsoft's emulator on the same machine, not Service Bus in Azure.
+
+Environment. The tag `phase-1`. `docker compose up` on one laptop: Intel Core i5-10300H, 8 threads, 16 GB, Ubuntu 24.04, Docker 29.8.2, with other development containers running on the same machine. One API process, one worker process handling up to six conversations at a time, PostgreSQL 18.7, Service Bus emulator 2.0.1 with SQL Server 2022, `azure-servicebus` 7.15.0. 200 messages per run.
+
+Result.
+
+- One conversation at a time: median 144 ms, p95 549 ms, slowest 829 ms, 5.1 messages per second.
+- Ten conversations at a time: median 1,774 ms, p95 2,120 ms, slowest 2,182 ms, 5.7 messages per second end to end.
+
+A second run of both, minutes later on the same stack, gave a median of 107 ms and a p95 of 483 ms in sequence, with one message at 3.2 s that I have not explained, and a median of 1,664 ms and a p95 of 2,052 ms in parallel at 5.9 messages per second. The medians move by about a quarter between runs; the ceiling on throughput does not.
+
+Where the time goes. The turn itself, with the database and the offline model, is a few tens of milliseconds. The rest is the queue. Each conversation is a Service Bus session, and the worker accepts the session, takes one trigger and closes it. Timed separately against the same emulator, accepting a session took about 0.46 s and closing it about 0.33 s, both inside the SDK. A worker slot that is already waiting receives a new conversation within about 60 ms, which is why the median for one conversation at a time is low. But a slot that just finished a turn is busy for about 0.8 s before it can take the next, so six slots handle between five and six conversations per second however fast the turn is. That ceiling is the second line: ten senders against six slots queue up.
+
+What I changed after measuring. The first version asked the queue for a batch of triggers and gave a median of 314 ms in sequence, because the SDK waits a further 0.2 s for the rest of a batch after the first message. Taking one trigger per session removed that. It also had every slot time out and reconnect at the same instant, leaving nobody listening for about a second every twenty; the waits are now staggered. With four slots instead of six the parallel run gave 3.9 messages per second and a median of 2.5 s.
+
+What it says and does not say. Against a model call of seconds, 0.8 s of slot time per turn means more worker concurrency for the same load, not a slower reply. A namespace in Azure allows a thousand connections where the emulator allows ten, so concurrency there is a setting. I have not measured Service Bus in Azure, where the handshake crosses a network, and I make no claim about throughput until the load test in Phase 6. ADR 0001 names the design that avoids the handshake and why I did not take it.
+
+Reproduce.
+
+```
+docker compose up --build -d
+cd backend
+uv run python scripts/latency.py --messages 200 --concurrency 1
+uv run python scripts/latency.py --messages 200 --concurrency 10
+```
+
 ## Planned entries
 
 - Phase 1, pending: the same latency with a real model on Azure OpenAI.

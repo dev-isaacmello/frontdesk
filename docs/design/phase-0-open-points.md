@@ -54,7 +54,7 @@ Single points in the demo. One database server, one replica per service, and a f
 
 Duplicate sends. No idempotency key on the WhatsApp send API. One duplicate is possible if the worker dies between the send and the commit.
 
-A connection per conversation on the queue. Each leased conversation is a connection to Service Bus, opened and closed around the turn, so worker concurrency bounds throughput. Phase 1 measures the handshake, the load test has to find the limit, and ADR 0001 names the alternative.
+A connection per conversation on the queue. Each leased conversation is a connection to Service Bus with a handshake of about 0.8 s around the turn, so worker concurrency bounds throughput. The load test has to find the limit, and ADR 0001 names the alternative.
 
 Embedding quality in Portuguese. The subscription has quota for one embedding model, `text-embedding-3-small`. The retrieval harness measures recall on a labelled pt-BR set before I rely on it, and there is no second model to compare it with here.
 
