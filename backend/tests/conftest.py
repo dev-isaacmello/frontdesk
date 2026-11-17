@@ -14,6 +14,7 @@ from testcontainers.community.postgres import PostgresContainer
 from frontdesk.db.bootstrap import APP_ROLE, OWNER_ROLE, BootstrapPlan, bootstrap
 from frontdesk.db.session import SessionFactory, create_engine, create_session_factory
 from frontdesk.seed import seed
+from tests.fakes import InMemoryTriggerQueue
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg18"
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -105,3 +106,9 @@ def clean_slate(database: Database) -> None:
         ).fetchone()
         if tables and tables[0]:
             connection.execute(f"truncate {tables[0]} cascade")
+
+
+@pytest.fixture
+def queue() -> InMemoryTriggerQueue:
+    """The stand-in the API and worker tests run on. See tests/queue for its contract."""
+    return InMemoryTriggerQueue()

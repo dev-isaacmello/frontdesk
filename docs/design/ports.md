@@ -175,3 +175,9 @@ Rules:
 ## MCP server
 
 The same tool objects are registered in an MCP server. The server authenticates the caller, maps the credential to one tenant, builds the context itself, and passes every write through the same gate the graph uses, so an action that needs the owner's approval in a conversation also needs it through MCP. The agent in the graph does not call tools through MCP; it calls them in process, in the same transaction as the turn.
+
+## Trigger queue
+
+The API and the worker see the queue through a small port, in `frontdesk/queue/port.py`. `send(trigger, deduplication_id)` enqueues a trigger and drops a repeat of the same id. `lease(wait_seconds)` takes the next conversation that has triggers waiting and that nobody else holds, or returns nothing after the wait. A lease gives the oldest trigger with `receive()`, removes it with `ack`, gives it back counting an attempt with `retry`, and ends with `release`.
+
+Two implementations: Azure Service Bus, where the lease is a session, and an in-memory queue used by the API and worker tests. One contract suite runs against both. ADR 0001 has the reasoning and the measured cost.
