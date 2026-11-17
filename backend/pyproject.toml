@@ -51,7 +51,7 @@ ignore = [
 [tool.mypy]
 strict = true
 python_version = "3.13"
-files = ["src", "tests", "migrations"]
+files = ["src", "tests", "migrations", "scripts"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
