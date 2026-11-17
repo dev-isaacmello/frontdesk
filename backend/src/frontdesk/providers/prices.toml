@@ -1,0 +1,20 @@
+# Prices of the models this project can call, in USD per million tokens.
+#
+# `version` is the date the prices were read. Every ledger row stores it, so a cost can
+# always be traced to the table that produced it. Change a price by adding a new dated
+# version in a commit, never by editing history.
+
+version = "2026-11-17"
+
+[models.gpt-5-mini]
+# Azure OpenAI, Global Standard. Azure Retail Prices API, meters "GPT 5 Mini Inpt Glbl",
+# "GPT 5 Mini cchd Inpt Glbl" and "GPT 5 Mini outpt Glbl".
+# https://prices.azure.com/api/retail/prices
+input = "0.25"
+cache_read = "0.025"
+output = "2.00"
+
+[models.offline]
+# The deterministic stand-in. It makes no billed call.
+input = "0"
+output = "0"
