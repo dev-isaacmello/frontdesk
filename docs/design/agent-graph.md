@@ -67,7 +67,7 @@ The graph runs with durability `sync`, so a checkpoint is written before the nex
 
 A turn has a hard cap on plan and execute rounds, on model calls, on output tokens per call and on total tokens. LangGraph's recursion limit is set as a backstop above my own counters, which are checked in code and produce a handoff instead of an exception. A turn also has a wall clock deadline.
 
-Two failed turns in a row on the same conversation switch it to handoff. A failed turn is one that ended with an error after the queue retries, not a guardrail block, which already has its own path.
+A turn that fails through all the queue's retries switches the conversation to handoff and tells the customer. I first wrote this as two failed turns in a row; that would have left the customer of the first one with no answer at all, so one is enough. A guardrail block is not a failed turn and has its own path.
 
 ## Hard policy and owner rules
 

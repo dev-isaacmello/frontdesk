@@ -7,11 +7,16 @@ from contextlib import suppress
 
 from frontdesk import logs
 from frontdesk.queue.port import Lease, TriggerQueue
-from frontdesk.worker.handler import WorkerDeps, handle
+from frontdesk.queue.triggers import Trigger
+from frontdesk.worker.handler import WorkerDeps, give_up, handle
 
 log = logging.getLogger(__name__)
 
 _LEASE_WAIT_SECONDS = 20
+MAX_ATTEMPTS = 5
+"""Deliveries of one trigger before the worker gives up. The queue's own maximum delivery
+count is the same number, so the delivery that gives up is also the one that sends the
+trigger to the dead-letter queue."""
 _QUEUE_RETRY_SECONDS = 5
 
 
@@ -107,12 +112,31 @@ async def handle_conversation(
                     **logs.failure(error),
                 },
             )
-            # The conversation stays leased during the pause, so nothing of it runs out
-            # of order and a dependency that is down is not hit in a tight loop.
-            await asyncio.sleep(pause(delivery.attempt))
+            if delivery.attempt >= MAX_ATTEMPTS:
+                await _give_up(deps, trigger)
+            else:
+                # The conversation stays leased during the pause, so nothing of it runs
+                # out of order and a dependency that is down is not hit in a tight loop.
+                await asyncio.sleep(pause(delivery.attempt))
             await lease.retry(delivery)
             return 0
         await lease.ack(delivery)
         return 1
     finally:
         await lease.release()
+
+
+async def _give_up(deps: WorkerDeps, trigger: Trigger) -> None:
+    try:
+        await give_up(deps, trigger)
+    except Exception as error:
+        # Whatever broke the turn can break this too. The trigger still goes to the
+        # dead-letter queue, where the alarm on its size is the last line.
+        log.error(
+            "give_up_failed",
+            extra={
+                "tenant_id": str(trigger.tenant_id),
+                "conversation_id": str(trigger.conversation_id),
+                **logs.failure(error),
+            },
+        )

@@ -26,11 +26,21 @@ from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.port import Message, ModelProvider, ModelRequest, ModelResponse
 from frontdesk.tools.registry import TOOL_SPECS
 
-__all__ = ["AgentDeps", "HistoryMessage", "TurnInput", "TurnResult", "run_turn"]
+__all__ = ["AgentDeps", "HistoryMessage", "TurnInput", "TurnLimits", "TurnResult", "run_turn"]
 
-# Above anything a healthy turn reaches. Phase 2 replaces the exception this raises
-# with counted limits that end in handoff.
-_RECURSION_LIMIT = 25
+# A backstop above the counted limits below, which are the ones that act: they end the
+# turn in handoff, where this one would raise.
+_RECURSION_LIMIT = 60
+
+
+@dataclass(frozen=True)
+class TurnLimits:
+    """Where a turn stops and goes to a person, however the model behaves."""
+
+    tool_rounds: int = 6
+    model_calls: int = 10
+    tokens: int = 120_000
+    """Input and output of every model call of the turn, added up."""
 
 
 @dataclass(frozen=True)
@@ -39,6 +49,7 @@ class AgentDeps:
     provider: ModelProvider
     model: str
     ledger: ModelLedger
+    limits: TurnLimits = TurnLimits()
 
 
 class Classification(BaseModel):
@@ -56,6 +67,9 @@ class _State(TypedDict, total=False):
     in_scope: bool
     handoff_reason: HandoffReason
     transcript: Annotated[list[Message], operator.add]
+    model_calls: Annotated[int, operator.add]
+    tokens: Annotated[int, operator.add]
+    tool_rounds: Annotated[int, operator.add]
     outcome: Literal["replied", "refused", "handoff"]
     reply: str
 
@@ -123,9 +137,10 @@ async def _classify(state: _State, runtime: Runtime[AgentDeps]) -> _State:
         ),
     )
     classification = Classification.model_validate_json(response.text or "")
+    update: _State = {"in_scope": classification.in_scope, **_spent(response)}
     if classification.wants_human:
-        return {"in_scope": classification.in_scope, "handoff_reason": "customer_asked"}
-    return {"in_scope": classification.in_scope}
+        update["handoff_reason"] = "customer_asked"
+    return update
 
 
 async def _handoff(state: _State) -> _State:  # noqa: ARG001  a node is called with the state
@@ -154,8 +169,8 @@ async def _plan(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     )
     said = Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
     if response.tool_calls:
-        return {"transcript": [said]}
-    return {"transcript": [said], "outcome": "replied", "reply": said.content}
+        return {"transcript": [said], **_spent(response)}
+    return {"transcript": [said], "outcome": "replied", "reply": said.content, **_spent(response)}
 
 
 async def _execute(state: _State, runtime: Runtime[AgentDeps]) -> _State:
@@ -165,7 +180,24 @@ async def _execute(state: _State, runtime: Runtime[AgentDeps]) -> _State:
         await run_tool_call(runtime.context.sessions, state["turn"], call, already_run + index)
         for index, call in enumerate(transcript[-1].tool_calls)
     ]
-    return {"transcript": results}
+    update: _State = {"transcript": results, "tool_rounds": 1}
+    if _over(runtime.context.limits, state):
+        update["handoff_reason"] = "turn_limit"
+    return update
+
+
+def _spent(response: ModelResponse) -> _State:
+    usage = response.usage
+    return {"model_calls": 1, "tokens": usage.input_tokens + usage.output_tokens}
+
+
+def _over(limits: TurnLimits, state: _State) -> bool:
+    """Whether another plan call would pass a limit, counting the round that just ran."""
+    return (
+        state.get("tool_rounds", 0) + 1 >= limits.tool_rounds
+        or state.get("model_calls", 0) >= limits.model_calls
+        or state.get("tokens", 0) >= limits.tokens
+    )
 
 
 def _after_context(state: _State) -> Literal["classify", "handoff"]:
@@ -176,6 +208,10 @@ def _after_classify(state: _State) -> Literal["plan", "refuse", "handoff"]:
     if "handoff_reason" in state:
         return "handoff"
     return "plan" if state["in_scope"] else "refuse"
+
+
+def _after_execute(state: _State) -> Literal["plan", "handoff"]:
+    return "handoff" if "handoff_reason" in state else "plan"
 
 
 def _after_plan(state: _State) -> Literal["execute", "done"]:
@@ -201,7 +237,7 @@ def _build() -> StateGraph[_State, AgentDeps]:
     graph.add_edge("refuse", END)
     graph.add_edge("handoff", END)
     graph.add_conditional_edges("plan", _after_plan, {"execute": "execute", "done": END})
-    graph.add_edge("execute", "plan")
+    graph.add_conditional_edges("execute", _after_execute)
     return graph
 
 

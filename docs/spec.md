@@ -68,7 +68,7 @@ Approval and handoff
 - APR-1 [2] An action the tenant marks as sensitive pauses the turn, appears in the owner's queue, and tells the customer to wait.
 - APR-2 [2] The owner's decision resumes that turn. An approved action is validated again before it is written.
 - APR-3 [2] While an approval is pending, new customer messages are answered in new turns.
-- HND-1 [2] The conversation goes to a person when the customer asks, after two failed turns in a row, when the guardrail blocks twice, and when the budget is exhausted. In handoff the agent stays silent.
+- HND-1 [2] The conversation goes to a person when the customer asks, when a turn fails through all its retries, when a turn reaches one of its limits, when the guardrail blocks twice, and when the budget is exhausted. In handoff the agent stays silent.
 
 Multi-tenancy and knowledge
 

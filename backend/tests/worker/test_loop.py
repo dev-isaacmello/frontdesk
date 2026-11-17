@@ -9,9 +9,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from frontdesk.agent.graph import AgentDeps
+from frontdesk.agent.prompts import HANDOFF_NOTICE
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.offline import OfflineProvider
+from frontdesk.providers.port import ModelProvider, ModelRequest, ModelResponse
 from frontdesk.providers.prices import load_price_table
 from frontdesk.queue.port import Delivery, TriggerQueue
 from frontdesk.queue.triggers import Trigger
@@ -19,18 +21,27 @@ from frontdesk.seed import BARBERSHOP
 from frontdesk.worker.handler import WorkerDeps
 from frontdesk.worker.loop import backoff_seconds, process_next, run
 from tests.fakes import InMemoryLease, InMemoryTriggerQueue, waiting_triggers
-from tests.support import RecordingSender, say
+from tests.support import RecordingSender, conversation_row, say
 from tests.tools.conftest import NOW
 
 SECRET_TEXT = "oi, aqui é a Mariana Albuquerque, quanto custa o corte?"
 
 
-def worker(sessions: SessionFactory, sender: RecordingSender) -> WorkerDeps:
+class BrokenProvider:
+    name = "broken"
+
+    async def complete(self, _request: ModelRequest) -> ModelResponse:
+        raise TimeoutError("model provider is down")
+
+
+def worker(
+    sessions: SessionFactory, sender: RecordingSender, provider: ModelProvider | None = None
+) -> WorkerDeps:
     return WorkerDeps(
         sessions=sessions,
         agent=AgentDeps(
             sessions=sessions,
-            provider=OfflineProvider(),
+            provider=provider or OfflineProvider(),
             model="offline",
             ledger=ModelLedger(sessions, load_price_table()),
         ),
@@ -98,6 +109,41 @@ async def test_a_trigger_that_never_succeeds_is_set_aside_by_the_queue(
 
     assert await process_next(down, queue, wait_seconds=0, pause=no_pause) == 0
     assert [trigger.tenant_id for trigger in queue.set_aside] == [BARBERSHOP.id]
+
+
+async def test_ing_6_a_turn_that_fails_every_attempt_goes_to_a_person(
+    sessions: SessionFactory, queue: InMemoryTriggerQueue
+) -> None:
+    sender = RecordingSender()
+    broken = worker(sessions, sender, BrokenProvider())
+    receipt = await say(sessions, "quanto custa o corte?", "Ana-1", sender="Ana")
+    await queue.send(
+        Trigger(tenant_id=BARBERSHOP.id, conversation_id=receipt.conversation_id),
+        deduplication_id="Ana-1",
+    )
+
+    for _ in range(5):
+        await process_next(broken, queue, wait_seconds=0, pause=no_pause)
+
+    conversation = await conversation_row(sessions, receipt.conversation_id)
+    assert [message.text for message in sender.sent] == [HANDOFF_NOTICE]
+    assert conversation["mode"] == "handoff"
+    assert len(queue.set_aside) == 1
+    assert await process_next(broken, queue, wait_seconds=0, pause=no_pause) == 0
+
+
+async def test_ing_6_before_the_last_attempt_the_customer_hears_nothing(
+    sessions: SessionFactory, queue: InMemoryTriggerQueue
+) -> None:
+    sender = RecordingSender()
+    broken = worker(sessions, sender, BrokenProvider())
+    await enqueue(sessions, queue, "quanto custa o corte?", "Ana")
+
+    for _ in range(4):
+        await process_next(broken, queue, wait_seconds=0, pause=no_pause)
+
+    assert sender.sent == []
+    assert queue.set_aside == []
 
 
 def test_a_failed_trigger_is_held_longer_at_each_attempt() -> None:

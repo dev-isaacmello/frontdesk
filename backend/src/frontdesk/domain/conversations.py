@@ -222,6 +222,46 @@ async def close_turn(
         )
 
 
+async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now: datetime) -> None:
+    """Ends the attempt to answer: the conversation goes to a person and the customer is told.
+
+    Called when a turn failed through all its retries. Does nothing when a person is
+    already in charge, so calling it again is safe.
+    """
+    conversation = await session.scalar(
+        select(Conversation).where(Conversation.id == conversation_id).with_for_update()
+    )
+    if conversation is None or conversation.mode == "handoff":
+        return
+    turn = await session.scalar(
+        select(Turn).where(Turn.conversation_id == conversation_id, Turn.status == "running")
+    )
+    if turn is not None:
+        turn.status, turn.outcome, turn.finished_at = "failed", "failed", now
+    session.add(
+        Message(
+            tenant_id=conversation.tenant_id,
+            conversation_id=conversation_id,
+            direction="out",
+            author="agent",
+            body=notice,
+            occurred_at=now,
+            turn_id=turn.id if turn else None,
+            seq=0 if turn else None,
+        )
+    )
+    conversation.mode = "handoff"
+    session.add(
+        Handoff(
+            tenant_id=conversation.tenant_id,
+            conversation_id=conversation_id,
+            turn_id=turn.id if turn else None,
+            reason="agent_failed",
+            opened_at=now,
+        )
+    )
+
+
 async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[OutboundMessage]:
     rows = await session.execute(
         select(Message, ChannelAccountRow.channel, CustomerIdentity.external_id)

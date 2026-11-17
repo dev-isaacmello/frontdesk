@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
+from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps, run_turn
 from frontdesk.channels.port import ChannelSender
 from frontdesk.db.session import SessionFactory, tenant_transaction
@@ -36,6 +37,15 @@ async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
                 session, trigger.conversation_id, turn, result, deps.clock()
             )
 
+    await _deliver(deps, trigger)
+
+
+async def give_up(deps: WorkerDeps, trigger: Trigger) -> None:
+    """Stops retrying a conversation whose turn keeps failing and hands it to a person."""
+    async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+        await conversations.give_up(
+            session, trigger.conversation_id, prompts.HANDOFF_NOTICE, deps.clock()
+        )
     await _deliver(deps, trigger)
 
 
