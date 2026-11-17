@@ -1,7 +1,7 @@
 """The composition root: where configuration becomes the objects the services run on."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 from openai import AsyncOpenAI
@@ -88,4 +88,5 @@ def worker_from(settings: Settings) -> WorkerDeps:
         ),
         senders={"webchat": WebchatSender(sessions)},
         clock=now,
+        quiet_window=timedelta(seconds=settings.quiet_window_seconds),
     )

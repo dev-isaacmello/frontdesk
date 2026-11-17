@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from frontdesk.agent.graph import AgentDeps
 from frontdesk.agent.prompts import HANDOFF_NOTICE
 from frontdesk.db.session import SessionFactory, tenant_transaction
+from frontdesk.domain.conversations import open_turn
 from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.offline import OfflineProvider
 from frontdesk.providers.port import ModelProvider, ModelRequest, ModelResponse
@@ -144,6 +145,27 @@ async def test_ing_6_before_the_last_attempt_the_customer_hears_nothing(
 
     assert sender.sent == []
     assert queue.set_aside == []
+
+
+async def test_ing_4_a_busy_conversation_stays_in_the_queue_without_counting_an_attempt(
+    sessions: SessionFactory, queue: TriggerQueue
+) -> None:
+    await enqueue(sessions, queue, "quanto custa o corte?", "Ana")
+    [waiting] = await waiting_triggers(queue)
+    await queue.send(waiting, deduplication_id="again")
+    async with tenant_transaction(sessions, BARBERSHOP.id) as session:
+        await open_turn(session, waiting.conversation_id, NOW)
+
+    handled = await process_next(
+        worker(sessions, RecordingSender()), queue, wait_seconds=0, pause=no_pause
+    )
+    lease = await queue.lease(wait_seconds=0)
+    assert lease is not None
+    delivery = await lease.receive()
+
+    assert handled == 0
+    assert delivery is not None
+    assert delivery.attempt == 1
 
 
 def test_a_failed_trigger_is_held_longer_at_each_attempt() -> None:

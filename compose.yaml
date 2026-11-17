@@ -15,6 +15,7 @@ x-backend: &backend
     FRONTDESK_SERVICEBUS_CONNECTION_STRING: Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
     FRONTDESK_QUEUE_NAME: triggers
     FRONTDESK_WORKER_CONCURRENCY: ${FRONTDESK_WORKER_CONCURRENCY:-6}
+    FRONTDESK_QUIET_WINDOW_SECONDS: ${FRONTDESK_QUIET_WINDOW_SECONDS:-1.5}
     FRONTDESK_WEBCHAT_SECRET: ${FRONTDESK_WEBCHAT_SECRET:-local-webchat-secret-change-me}
     # The deterministic stand-in by default. Set these four in .env to talk to a real model.
     FRONTDESK_MODEL_PROVIDER: ${FRONTDESK_MODEL_PROVIDER:-offline}

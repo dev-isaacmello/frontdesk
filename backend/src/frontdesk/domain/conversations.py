@@ -1,11 +1,11 @@
 """The inbox, the turns and the outbox of a conversation."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal, cast
 from uuid import UUID
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,19 @@ from frontdesk.db.models import (
 from frontdesk.domain.customers import Channel, ChannelIdentity, identify_customer
 
 _HISTORY_WINDOW = 20
+_LEASE = timedelta(minutes=3)
+"""How long a worker may hold a conversation without finishing. Past it, another worker
+takes over, and the first one's final write is refused."""
+
+
+class ConversationBusyError(Exception):
+    """Another worker holds the conversation and its lease has not run out."""
+
+
+class StaleLeaseError(Exception):
+    """This worker's lease on the conversation was taken over, so its turn is not written."""
+
+
 _RESOLVE_ACCOUNT = text(
     "select tenant_id, channel_account_id from resolve_channel_account(:channel, :external_id)"
 )
@@ -142,6 +155,10 @@ async def open_turn(
     turn = await session.scalar(
         select(Turn).where(Turn.conversation_id == conversation_id, Turn.status == "running")
     )
+    if turn is not None and conversation.lease_until is not None and conversation.lease_until > now:
+        # The queue gives a conversation to one worker at a time, but its lock can be lost
+        # while the first worker is still running. This is the lock that holds then.
+        raise ConversationBusyError
     if turn is None:
         waiting = select(Message.id).where(
             Message.conversation_id == conversation_id,
@@ -169,11 +186,14 @@ async def open_turn(
         if in_handoff:
             return None
 
+    conversation.lease_epoch += 1
+    conversation.lease_until = now + _LEASE
     lines = await _lines(session, conversation_id)
     return TurnInput(
         tenant_id=conversation.tenant_id,
         customer_id=conversation.customer_id,
         turn_id=turn.id,
+        lease_epoch=conversation.lease_epoch,
         now=turn.started_at,
         messages=[line.body for line in lines if line.turn_id == turn.id],
         history=[
@@ -187,7 +207,12 @@ async def open_turn(
 async def close_turn(
     session: AsyncSession, conversation_id: UUID, turn: TurnInput, result: TurnResult, now: datetime
 ) -> None:
-    """Completes the turn and puts its reply in the outbox, as one change."""
+    """Completes the turn and puts its reply in the outbox, as one change.
+
+    Refused with StaleLeaseError when another worker took the conversation over meanwhile.
+    """
+    if not await release_lease(session, conversation_id, turn.lease_epoch):
+        raise StaleLeaseError
     await session.execute(
         insert(Message)
         .values(
@@ -222,6 +247,29 @@ async def close_turn(
         )
 
 
+async def release_lease(session: AsyncSession, conversation_id: UUID, epoch: int) -> bool:
+    """Lets the conversation go if this epoch still holds it. Returns whether it did."""
+    held = await session.scalar(
+        update(Conversation)
+        .where(Conversation.id == conversation_id, Conversation.lease_epoch == epoch)
+        .values(lease_until=None)
+        .returning(Conversation.id)
+    )
+    return held is not None
+
+
+async def newest_waiting(session: AsyncSession, conversation_id: UUID) -> datetime | None:
+    """When the latest customer message still waiting for a turn was sent."""
+    newest: datetime | None = await session.scalar(
+        select(func.max(Message.occurred_at)).where(
+            Message.conversation_id == conversation_id,
+            Message.direction == "in",
+            Message.turn_id.is_(None),
+        )
+    )
+    return newest
+
+
 async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now: datetime) -> None:
     """Ends the attempt to answer: the conversation goes to a person and the customer is told.
 
@@ -251,6 +299,7 @@ async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now
         )
     )
     conversation.mode = "handoff"
+    conversation.lease_until = None
     session.add(
         Handoff(
             tenant_id=conversation.tenant_id,

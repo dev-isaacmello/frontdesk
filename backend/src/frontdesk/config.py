@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     queue while it is handled. The emulator allows ten connections in all, the API's
     included; a Standard namespace allows a thousand."""
 
+    quiet_window_seconds: float = 1.5
+    """How long a customer has to be silent before the agent answers. A burst of short
+    messages inside it becomes one turn."""
+
     webchat_secret: SecretStr
     """Shared with the panel's server, which signs every request it makes to the API."""
 

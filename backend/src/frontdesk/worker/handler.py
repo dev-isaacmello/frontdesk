@@ -1,8 +1,9 @@
 """What a worker does with one trigger."""
 
-from collections.abc import Callable, Mapping
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps, run_turn
@@ -19,6 +20,15 @@ class WorkerDeps:
     agent: AgentDeps
     senders: Mapping[Channel, ChannelSender]
     clock: Callable[[], datetime]
+    quiet_window: timedelta = timedelta(0)
+    """How long the customer has to be silent before the turn starts, so that a burst of
+    short messages is answered once."""
+
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+
+
+_MAX_QUIET_WAITS = 5
+"""A customer who never stops typing does not postpone the answer for ever."""
 
 
 async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
@@ -27,17 +37,38 @@ async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
     Safe to call again for the same trigger: a finished turn is not run twice, and a
     reply that was written but not sent is sent without calling the model.
     """
+    await _let_a_burst_finish(deps, trigger)
     async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
         turn = await conversations.open_turn(session, trigger.conversation_id, deps.clock())
 
     if turn is not None:
-        result = await run_turn(deps.agent, turn)
-        async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
-            await conversations.close_turn(
-                session, trigger.conversation_id, turn, result, deps.clock()
-            )
+        try:
+            result = await run_turn(deps.agent, turn)
+            async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+                await conversations.close_turn(
+                    session, trigger.conversation_id, turn, result, deps.clock()
+                )
+        except Exception:
+            # The retry must not wait for the lease of the attempt that just failed.
+            async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+                await conversations.release_lease(
+                    session, trigger.conversation_id, turn.lease_epoch
+                )
+            raise
 
     await _deliver(deps, trigger)
+
+
+async def _let_a_burst_finish(deps: WorkerDeps, trigger: Trigger) -> None:
+    for _ in range(_MAX_QUIET_WAITS):
+        async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+            newest = await conversations.newest_waiting(session, trigger.conversation_id)
+        if newest is None:
+            return
+        remaining = deps.quiet_window - (deps.clock() - newest)
+        if remaining <= timedelta(0):
+            return
+        await deps.sleep(remaining.total_seconds())
 
 
 async def give_up(deps: WorkerDeps, trigger: Trigger) -> None:

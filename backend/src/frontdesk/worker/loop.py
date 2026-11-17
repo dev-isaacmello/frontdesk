@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import suppress
 
 from frontdesk import logs
+from frontdesk.domain.conversations import ConversationBusyError
 from frontdesk.queue.port import Lease, TriggerQueue
 from frontdesk.queue.triggers import Trigger
 from frontdesk.worker.handler import WorkerDeps, give_up, handle
@@ -102,6 +103,11 @@ async def handle_conversation(
         trigger = delivery.trigger
         try:
             await handle(deps, trigger)
+        except ConversationBusyError:
+            # Another worker still holds the conversation. The trigger goes back as it
+            # came, without counting an attempt, and is offered again after the pause.
+            await asyncio.sleep(pause(1))
+            return 0
         except Exception as error:
             log.error(
                 "turn_failed",

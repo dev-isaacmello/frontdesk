@@ -20,6 +20,8 @@ class TurnInput:
     now: datetime
     messages: list[str]
     history: list[HistoryMessage]
+    lease_epoch: int = 0
+    """The lease on the conversation this turn runs under. Its final write names it."""
 
 
 type HandoffReason = Literal[

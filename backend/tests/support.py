@@ -73,6 +73,7 @@ async def say(
     *,
     sender: str = "Ana",
     tenant: TenantSeed = BARBERSHOP,
+    sent_at: datetime = datetime(2026, 11, 18, 10, 0, tzinfo=UTC),
 ) -> Receipt:
     """A customer message arriving through the web chat of a tenant."""
     account = await webchat_account(sessions, tenant)
@@ -80,7 +81,7 @@ async def say(
         provider_message_id=message_id,
         sender=ChannelIdentity(channel="webchat", external_id=sender, display_name=sender),
         text=text,
-        sent_at=datetime(2026, 11, 18, 10, 0, tzinfo=UTC),
+        sent_at=sent_at,
         raw={"text": text},
     )
     async with tenant_transaction(sessions, account.tenant_id) as session:
