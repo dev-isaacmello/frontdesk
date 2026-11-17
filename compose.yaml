@@ -1,0 +1,133 @@
+# The whole system on one machine, with no cloud account.
+#
+#   docker compose up --build
+#
+# The credentials below exist only inside this compose network. They are defaults for
+# local use; a deployment sets every one of them (see .env.example).
+
+name: frontdesk
+
+x-backend: &backend
+  build: ./backend
+  image: frontdesk-backend:local
+  environment: &backend-env
+    FRONTDESK_DATABASE_URL: postgresql+psycopg://frontdesk_app:${FRONTDESK_APP_PASSWORD:-local-app}@postgres:5432/frontdesk
+    FRONTDESK_SERVICEBUS_CONNECTION_STRING: Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+    FRONTDESK_QUEUE_NAME: triggers
+    FRONTDESK_WORKER_CONCURRENCY: ${FRONTDESK_WORKER_CONCURRENCY:-6}
+    FRONTDESK_WEBCHAT_SECRET: ${FRONTDESK_WEBCHAT_SECRET:-local-webchat-secret-change-me}
+    # The deterministic stand-in by default. Set these four in .env to talk to a real model.
+    FRONTDESK_MODEL_PROVIDER: ${FRONTDESK_MODEL_PROVIDER:-offline}
+    FRONTDESK_MODEL: ${FRONTDESK_MODEL:-offline}
+    FRONTDESK_AZURE_OPENAI_ENDPOINT: ${FRONTDESK_AZURE_OPENAI_ENDPOINT:-}
+    FRONTDESK_AZURE_OPENAI_API_KEY: ${FRONTDESK_AZURE_OPENAI_API_KEY:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-superuser}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Microsoft's Service Bus emulator and the SQL Server it keeps its state in. The queue
+  # is declared in ops/local/servicebus-emulator.json, with the settings Terraform gives
+  # the real one.
+  servicebus-sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Local-emulator-1}
+
+  servicebus:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:2.0.1
+    environment:
+      ACCEPT_EULA: "Y"
+      SQL_SERVER: servicebus-sql
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Local-emulator-1}
+      SQL_WAIT_INTERVAL: "0"
+    volumes:
+      - ./ops/local/servicebus-emulator.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    depends_on:
+      - servicebus-sql
+
+  # The emulator image has no shell to run a health check with, so this waits from outside.
+  servicebus-ready:
+    <<: *backend
+    command:
+      - python
+      - -c
+      - |
+        import time, urllib.request
+        for _ in range(180):
+            try:
+                urllib.request.urlopen("http://servicebus:5300/health", timeout=2)
+                break
+            except OSError:
+                time.sleep(1)
+        else:
+            raise SystemExit("the Service Bus emulator did not become healthy")
+    depends_on:
+      - servicebus
+    restart: "no"
+
+  setup:
+    <<: *backend
+    command: ["python", "-m", "frontdesk.setup"]
+    environment:
+      <<: *backend-env
+      FRONTDESK_SUPERUSER_DSN: postgresql://postgres:${POSTGRES_PASSWORD:-local-superuser}@postgres:5432/postgres
+      FRONTDESK_DATABASE_NAME: frontdesk
+      FRONTDESK_OWNER_PASSWORD: ${FRONTDESK_OWNER_PASSWORD:-local-owner}
+      FRONTDESK_APP_PASSWORD: ${FRONTDESK_APP_PASSWORD:-local-app}
+      FRONTDESK_MIGRATIONS_DATABASE_URL: postgresql+psycopg://frontdesk_owner:${FRONTDESK_OWNER_PASSWORD:-local-owner}@postgres:5432/frontdesk
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    ports:
+      - "127.0.0.1:${FRONTDESK_API_PORT:-8700}:8000"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      servicebus-ready:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "frontdesk.worker"]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      servicebus-ready:
+        condition: service_completed_successfully
+
+  web:
+    build: ./web
+    image: frontdesk-web:local
+    environment:
+      FRONTDESK_API_URL: http://api:8000
+      FRONTDESK_WEBCHAT_SECRET: ${FRONTDESK_WEBCHAT_SECRET:-local-webchat-secret-change-me}
+      # Compose serves plain HTTP on localhost, where a secure cookie would be dropped.
+      FRONTDESK_INSECURE_COOKIES: "true"
+    ports:
+      - "127.0.0.1:${FRONTDESK_WEB_PORT:-3700}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres:
