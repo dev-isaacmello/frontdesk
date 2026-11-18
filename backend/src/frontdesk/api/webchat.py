@@ -26,8 +26,9 @@ from frontdesk.queue.triggers import Trigger
 class WebchatMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str = Field(min_length=1, max_length=64)
-    message_id: str = Field(min_length=1, max_length=64)
+    # Identifiers are compared, never cleaned: one with anything but visible ASCII is refused.
+    session_id: str = Field(min_length=1, max_length=64, pattern=r"^[\x21-\x7e]+$")
+    message_id: str = Field(min_length=1, max_length=64, pattern=r"^[\x21-\x7e]+$")
     text: str = Field(min_length=1, max_length=2000)
     display_name: str | None = Field(default=None, max_length=80)
 

@@ -22,6 +22,7 @@ from frontdesk.db.session import tenant_transaction
 from frontdesk.domain import approvals, owners, panel, rules
 from frontdesk.domain.owners import Owner
 from frontdesk.domain.tenants import load_tenant
+from frontdesk.domain.text import Storable
 from frontdesk.queue.triggers import Trigger
 
 SESSION_HEADER = "X-Frontdesk-Owner-Session"
@@ -36,7 +37,7 @@ class _Body(BaseModel):
 
 
 class Credentials(_Body):
-    email: str = Field(min_length=3, max_length=200)
+    email: Storable = Field(min_length=3, max_length=200)
     password: str = Field(min_length=1, max_length=200)
 
 
@@ -45,11 +46,11 @@ class Decision(_Body):
 
 
 class RulesText(_Body):
-    body: str = Field(max_length=4000)
+    body: Storable = Field(max_length=4000)
 
 
 class OwnerMessage(_Body):
-    text: str = Field(min_length=1, max_length=2000)
+    text: Storable = Field(min_length=1, max_length=2000)
 
 
 def owner_router(deps: ApiDeps) -> APIRouter:

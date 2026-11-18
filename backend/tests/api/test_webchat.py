@@ -7,11 +7,12 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import text
 
 from frontdesk.api.app import ApiDeps, create_app
 from frontdesk.channels.signing import SIGNATURE_HEADER, TIMESTAMP_HEADER, sign
 from frontdesk.channels.webchat import PostgresNotifications
-from frontdesk.db.session import SessionFactory
+from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.queue.port import TriggerQueue
 from frontdesk.seed import ARENA, BARBERSHOP
 from tests.conftest import Database
@@ -181,3 +182,25 @@ async def test_a_stream_request_must_be_signed(client: httpx.AsyncClient) -> Non
     )
 
     assert response.status_code == 401
+
+
+async def test_ing_3_a_message_with_a_byte_the_database_refuses_is_stored_without_it(
+    client: httpx.AsyncClient, sessions: SessionFactory
+) -> None:
+    said = {**HELLO, "text": "oi\u0000, tudo bem?", "display_name": "A\u0000na"}
+
+    response = await post(client, said)
+
+    assert response.status_code == 202
+    async with tenant_transaction(sessions, BARBERSHOP.id) as session:
+        stored = await session.execute(
+            text("select m.body, c.display_name from messages m, customers c")
+        )
+    assert stored.all() == [("oi, tudo bem?", "Ana")]
+
+
+async def test_ing_3_an_id_with_a_control_character_is_refused(client: httpx.AsyncClient) -> None:
+    session = await post(client, {**HELLO, "session_id": "session\u0000-1"})
+    message = await post(client, {**HELLO, "message_id": "m\u00001"})
+
+    assert (session.status_code, message.status_code) == (422, 422)

@@ -248,3 +248,20 @@ async def test_cst_4_a_sent_message_records_what_its_channel_charged(
         )
     # The web chat charges nothing, and says so instead of leaving the cost unknown.
     assert charged.all() == [(0, "USD")]
+
+
+async def test_a_reply_with_a_byte_the_database_refuses_is_still_delivered(
+    sessions: SessionFactory,
+) -> None:
+    """Seen with a real model: a NUL inside the reply, and the turn failed at its last write."""
+    sender = RecordingSender()
+    deps, _ = worker(sessions, sender, IN_SCOPE, says("Oi\x00, Ana! Como posso ajudar?"))
+    receipt = await say(sessions, "oi", "m1")
+
+    await handle(deps, trigger_of(receipt))
+
+    assert [reply.text for reply in sender.sent] == ["Oi, Ana! Como posso ajudar?"]
+    assert await lines(sessions, receipt.conversation_id) == [
+        ("customer", "oi"),
+        ("agent", "Oi, Ana! Como posso ajudar?"),
+    ]

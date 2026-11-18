@@ -1,6 +1,6 @@
 """The inbox, the turns and the outbox of a conversation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -24,6 +24,7 @@ from frontdesk.db.models import (
 from frontdesk.db.models import ChannelAccount as ChannelAccountRow
 from frontdesk.domain import approvals
 from frontdesk.domain.customers import Channel, ChannelIdentity, identify_customer
+from frontdesk.domain.text import storable, storable_json
 
 _HISTORY_WINDOW = 20
 _LEASE = timedelta(minutes=3)
@@ -98,6 +99,16 @@ async def receive(
     session: AsyncSession, account: ChannelAccount, message: InboundMessage
 ) -> Receipt:
     """Stores an inbound message once, however many times the provider delivers it."""
+    # Whatever the channel, what a customer sent is stored without what cannot be stored.
+    message = replace(
+        message,
+        text=storable(message.text),
+        raw=storable_json(message.raw),
+        sender=replace(
+            message.sender,
+            display_name=message.sender.display_name and storable(message.sender.display_name),
+        ),
+    )
     event_id = await session.scalar(
         insert(InboundEvent)
         .values(

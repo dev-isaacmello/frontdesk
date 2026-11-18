@@ -270,6 +270,16 @@ async def test_ten_2_an_owner_cannot_see_or_decide_an_approval_of_another_tenant
     assert len(await waiting(sessions)) == 1
 
 
+async def test_pol_2_rules_with_a_byte_the_database_refuses_are_saved_without_it(
+    panel: Panel,
+) -> None:
+    token = await panel.sign_in()
+
+    saved = await panel.call("PUT", "/owner/rules", {"body": "Ofereça\u0000 café."}, token=token)
+
+    assert (saved.status_code, saved.json()["body"]) == (200, "Ofereça café.")
+
+
 async def test_pol_2_saving_rules_returns_the_version_in_force_and_what_it_contradicts(
     panel: Panel,
 ) -> None:

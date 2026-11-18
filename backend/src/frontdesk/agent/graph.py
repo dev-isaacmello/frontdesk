@@ -40,6 +40,7 @@ from frontdesk.domain.approvals import PendingApproval
 from frontdesk.domain.clock import to_local
 from frontdesk.domain.rules import active_rules
 from frontdesk.domain.tenants import load_tenant, opening_hours, timezone_of
+from frontdesk.domain.text import storable, storable_json
 from frontdesk.guardrail import Day, Sourced, facts_in
 from frontdesk.providers.embeddings import Embedder
 from frontdesk.providers.ledger import ModelLedger
@@ -220,7 +221,11 @@ def _model(deps: AgentDeps, state: _State, node: Literal["classify", "plan"]) ->
 async def _call_model(
     deps: AgentDeps, turn: TurnInput, node: str, request: ModelRequest
 ) -> ModelResponse:
-    """The only place a node reaches a provider, so every call lands in the ledger."""
+    """The only place a node reaches a provider, so every call lands in the ledger.
+
+    What comes back is text from outside like any other: a model has answered with a NUL
+    byte in a reply, which the database refuses. It is cleaned here, for every provider.
+    """
     response = await deps.provider.complete(request)
     await deps.ledger.record(
         tenant_id=turn.tenant_id,
@@ -229,7 +234,15 @@ async def _call_model(
         provider=deps.provider.name,
         response=response,
     )
-    return response
+    return response.model_copy(
+        update={
+            "text": None if response.text is None else storable(response.text),
+            "tool_calls": tuple(
+                call.model_copy(update={"arguments": storable_json(call.arguments)})
+                for call in response.tool_calls
+            ),
+        }
+    )
 
 
 async def _classify(state: _State, runtime: Runtime[AgentDeps]) -> _State:
