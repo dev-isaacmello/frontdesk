@@ -29,6 +29,12 @@ def bootstrap(superuser_dsn: str, plan: BootstrapPlan) -> None:
         _ensure_database(cluster, plan.database)
 
     with psycopg.connect(superuser_dsn, dbname=plan.database, autocommit=True) as database:
+        # Owning the database is not owning its `public` schema everywhere: on Azure the
+        # schema of a new database belongs to the administrators' role, and without this
+        # the owner role cannot create its first table.
+        database.execute(
+            sql.SQL("grant usage, create on schema public to {}").format(sql.Identifier(OWNER_ROLE))
+        )
         for extension in EXTENSIONS:
             database.execute(
                 sql.SQL("create extension if not exists {}").format(sql.Identifier(extension))
