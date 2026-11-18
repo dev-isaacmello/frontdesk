@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pytest
 
-from frontdesk.agent.graph import AgentDeps, run_turn
+from frontdesk.agent.graph import AgentDeps, HistoryMessage, run_turn
 from frontdesk.agent.prompts import REFUSAL
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.bookings import BookingInfo
@@ -245,3 +245,48 @@ async def test_a_call_that_stays_throttled_fails_its_turn_for_the_worker_to_retr
     assert max(waits) <= 5
     assert sum(waits) <= 20
     assert len(provider.requests) == len(waits) + 1
+
+
+async def test_agt_4_the_classifier_reads_the_history_as_a_quotation_and_one_message(
+    sessions: SessionFactory,
+) -> None:
+    """Given earlier replies as chat turns, the classifier model answered with nothing.
+
+    On the first real WhatsApp conversation the third identical question failed four
+    times, and a fourth one locally went to a person: `gpt-oss-120b` returned an empty
+    text for the classification whenever the transcript held replies of the agent. With
+    the same history quoted inside a single message it answered every time.
+    """
+    agent, provider = deps(sessions, IN_SCOPE, says("Temos corte e barba."))
+    turn = replace(
+        await start_turn(sessions, "quanto custa o corte?"),
+        history=[
+            HistoryMessage(author="customer", text="quanto custa o corte?"),
+            HistoryMessage(author="agent", text="O corte custa R$ 45,00."),
+        ],
+    )
+
+    await run_turn(agent, turn)
+
+    classify, plan = provider.requests
+    assert [message.role for message in classify.messages] == ["user"]
+    assert classify.messages[0].content == (
+        "Conversa até aqui:\n"
+        "cliente: quanto custa o corte?\n"
+        "atendente: O corte custa R$ 45,00.\n"
+        "\n"
+        "Mensagem a classificar:\n"
+        "quanto custa o corte?"
+    )
+    # The planner still converses: it gets the turns as turns.
+    assert [message.role for message in plan.messages] == ["user", "assistant", "user"]
+
+
+async def test_agt_4_a_first_message_is_classified_alone(sessions: SessionFactory) -> None:
+    agent, provider = deps(sessions, IN_SCOPE, says("Temos corte e barba."))
+
+    await run_turn(agent, await start_turn(sessions, "quanto custa o corte?"))
+
+    assert provider.requests[0].messages[0].content == (
+        "Mensagem a classificar:\nquanto custa o corte?"
+    )

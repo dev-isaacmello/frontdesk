@@ -334,7 +334,7 @@ async def _classification(state: _State, deps: AgentDeps) -> _State:
         ModelRequest(
             model=_model(deps, state, "classify"),
             system=prompts.classify_prompt(state["tenant_name"]),
-            messages=tuple(state["transcript"]),
+            messages=(_to_classify(state["transcript"]),),
             output_schema=Classification.model_json_schema(),
             # Reasoning tokens count against this limit, so it is far above the answer.
             max_output_tokens=512,
@@ -347,6 +347,14 @@ async def _classification(state: _State, deps: AgentDeps) -> _State:
     if classification.wants_human:
         update["handoff_reason"] = "customer_asked"
     return update
+
+
+def _to_classify(transcript: list[Message]) -> Message:
+    """The transcript as the classifier reads it: one message, the history quoted in it."""
+    *earlier, current = transcript
+    speakers = {"user": "cliente", "assistant": "atendente"}
+    history = [(speakers[said.role], said.content) for said in earlier if said.role in speakers]
+    return Message(role="user", content=prompts.classification_input(history, current.content))
 
 
 async def _retrieve(state: _State, runtime: Runtime[AgentDeps]) -> _State:
