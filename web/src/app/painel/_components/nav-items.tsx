@@ -4,16 +4,21 @@ const ITEMS = [
   { href: "/painel", label: "Conversas", short: "Conversas" },
   { href: "/painel/aprovacoes", label: "Aprovações", short: "Aprovações" },
   { href: "/painel/regras", label: "Regras da casa", short: "Regras" },
-  { href: "/painel/modelos", label: "Modelos de IA", short: "Modelos" },
+  { href: "/painel/uso", label: "Uso e custos", short: "Uso" },
 ] as const;
 
 function isCurrent(href: string, pathname: string | undefined): boolean {
   if (!pathname) {
     return false;
   }
-  return href === "/painel"
-    ? pathname === "/painel" || pathname.startsWith("/painel/conversas")
-    : pathname.startsWith(href);
+  if (href === "/painel") {
+    return pathname === "/painel" || pathname.startsWith("/painel/conversas");
+  }
+  // The comparison of models is reached from the usage screen and belongs to it.
+  if (href === "/painel/uso" && pathname.startsWith("/painel/modelos")) {
+    return true;
+  }
+  return pathname.startsWith(href);
 }
 
 function Count({ value }: { value: number }) {

@@ -187,6 +187,13 @@ def owner_router(deps: ApiDeps) -> APIRouter:
         await wake(owner, conversation_id, f"approval:{approval_id}")
         return Response(status_code=204)
 
+    @router.get("/usage")
+    async def show_usage(request: Request) -> dict[str, Any]:
+        owner, _ = await owner_of(request)
+        async with tenant_transaction(deps.sessions, owner.tenant_id) as session:
+            tenant = await load_tenant(session, owner.tenant_id)
+            return dataclasses.asdict(await panel.usage(session, tenant, deps.clock()))
+
     async def rules_view(owner: Owner, *, checked_by_model: bool | None) -> dict[str, Any]:
         async with tenant_transaction(deps.sessions, owner.tenant_id) as session:
             active = await rules.active_rules(session, owner.tenant_id)

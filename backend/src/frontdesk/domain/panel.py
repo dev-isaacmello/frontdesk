@@ -1,11 +1,12 @@
 """What the owner's panel reads. The tenant is always the one of the session."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -20,9 +21,13 @@ from frontdesk.db.models import (
     ModelCall,
     Resource,
     Service,
+    Tenant,
     Turn,
     TurnStep,
 )
+from frontdesk.domain.budget import tenant_level
+from frontdesk.domain.clock import to_local
+from frontdesk.domain.tenants import timezone_of
 
 _PREVIEW = 90
 
@@ -271,3 +276,97 @@ async def return_to_agent(session: AsyncSession, conversation_id: UUID, now: dat
         .values(resolved_at=now)
     )
     return True
+
+
+@dataclass(frozen=True)
+class DayUsage:
+    day: date
+    conversations: int
+    replied: int
+    refused: int
+    handed_off: int
+    blocked_drafts: int
+    model_calls: int
+    cost_microusd: int
+
+
+@dataclass(frozen=True)
+class Usage:
+    plan: str
+    monthly_budget_microusd: int | None
+    spent_this_month_microusd: int
+    level: str
+    conversations: int
+    """Conversations with a turn in the period. One that spans two days counts once here."""
+    days: list[DayUsage]
+
+
+async def usage(session: AsyncSession, tenant: Tenant, now: datetime, *, days: int = 30) -> Usage:
+    """What the agent did and what it cost, per day on the tenant's clock, newest first."""
+    zone = tenant.timezone
+    local_now = to_local(now, timezone_of(tenant))
+    since = (local_now - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    month_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    turns = await session.execute(
+        text(
+            """
+            select (started_at at time zone :zone)::date as day,
+                   count(distinct conversation_id),
+                   count(*) filter (where outcome = 'replied'),
+                   count(*) filter (where outcome = 'refused'),
+                   count(*) filter (where outcome = 'handoff' or status = 'failed'),
+                   coalesce(sum(blocked_drafts), 0)
+            from turns where started_at >= :since group by 1
+            """
+        ),
+        {"zone": zone, "since": since},
+    )
+    calls = await session.execute(
+        text(
+            """
+            -- A call is counted on the day of its turn, so that a day's cost sits beside
+            -- that day's conversations. A call outside any turn has only its own time.
+            select (coalesce(t.started_at, c.created_at) at time zone :zone)::date as day,
+                   count(*), sum(c.cost_microusd)
+            from model_calls c left join turns t on t.id = c.turn_id
+            where coalesce(t.started_at, c.created_at) >= :since group by 1
+            """
+        ),
+        {"zone": zone, "since": since},
+    )
+    spent_by_day = {day: (int(count), int(cost)) for day, count, cost in calls}
+    by_day = {row[0]: row[1:] for row in turns}
+    listed = sorted(set(by_day) | set(spent_by_day), reverse=True)
+    spent_this_month = await session.scalar(
+        text("select coalesce(sum(cost_microusd), 0) from model_calls where created_at >= :since"),
+        {"since": month_start},
+    )
+    conversations = await session.scalar(
+        text("select count(distinct conversation_id) from turns where started_at >= :since"),
+        {"since": since},
+    )
+    return Usage(
+        plan=tenant.plan,
+        conversations=int(conversations or 0),
+        monthly_budget_microusd=tenant.monthly_budget_microusd,
+        spent_this_month_microusd=int(spent_this_month or 0),
+        level=await tenant_level(session, tenant, now),
+        days=[_day(day, by_day.get(day), spent_by_day.get(day)) for day in listed],
+    )
+
+
+def _day(day: date, turns: Sequence[int] | None, spent: tuple[int, int] | None) -> DayUsage:
+    conversations, replied, refused, handed_off, blocked = turns or (0, 0, 0, 0, 0)
+    model_calls, cost = spent or (0, 0)
+    return DayUsage(
+        day=day,
+        conversations=int(conversations),
+        replied=int(replied),
+        refused=int(refused),
+        handed_off=int(handed_off),
+        blocked_drafts=int(blocked),
+        model_calls=model_calls,
+        cost_microusd=cost,
+    )

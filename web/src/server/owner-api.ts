@@ -5,6 +5,7 @@ import { cache } from "react";
 
 import type {
   Approval,
+  Usage,
   ConversationDetail,
   ConversationList,
   Rules,
@@ -220,6 +221,10 @@ export async function decideApproval(id: string, approved: boolean): Promise<Res
   }
   const result = await write("POST", `/owner/approvals/${id}/decision`, { body: { approved } });
   return result.ok ? { ok: true, value: null } : result;
+}
+
+export function getUsage(): Promise<Result<Usage>> {
+  return read<Usage>("/owner/usage");
 }
 
 export function getRules(): Promise<Result<Rules>> {

@@ -23,7 +23,7 @@ from frontdesk.seed import ARENA, BARBERSHOP, TenantSeed
 from frontdesk.worker.handler import handle
 from tests.conftest import OWNER_PASSWORD, Database
 from tests.fakes import waiting_triggers
-from tests.support import IN_SCOPE, RecordingSender, say, scripted_worker
+from tests.support import IN_SCOPE, OUT_OF_SCOPE, RecordingSender, say, scripted_worker
 from tests.tools.conftest import NOW
 from tests.worker.test_approval import IN_TWO_HOURS, NewSaver, ask_to_cancel, book, waiting
 
@@ -299,6 +299,30 @@ async def test_ten_2_the_rules_an_owner_saves_are_not_the_rules_of_another_tenan
     arena = await panel.call("GET", "/owner/rules", token=await panel.sign_in(ARENA))
 
     assert (arena.json()["version"], arena.json()["body"]) == (0, "")
+
+
+async def test_pan_3_the_owner_sees_what_the_agent_did_and_cost_per_day(
+    panel: Panel, sessions: SessionFactory
+) -> None:
+    await talk(sessions, "oi", "Oi! Como posso ajudar?")
+    refused = await say(sessions, "qual a capital da França?", "m2", sender="Bia")
+    worker, _ = scripted_worker(sessions, RecordingSender(), OUT_OF_SCOPE)
+    await handle(worker, Trigger(tenant_id=BARBERSHOP.id, conversation_id=refused.conversation_id))
+    await talk(sessions, "olá", "Olá! Quer reservar uma quadra?", tenant=ARENA)
+    token = await panel.sign_in()
+
+    shown = (await panel.call("GET", "/owner/usage", token=token)).json()
+
+    # The scripted model costs 100 input at 1.00 and 20 output at 2.00 per million: 140 a call.
+    [today] = shown["days"]
+    assert (today["conversations"], today["replied"], today["refused"]) == (2, 1, 1)
+    assert (today["model_calls"], today["cost_microusd"]) == (3, 420)
+    assert shown["conversations"] == 2
+    assert (shown["plan"], shown["monthly_budget_microusd"], shown["level"]) == (
+        "basic",
+        5_000_000,
+        "normal",
+    )
 
 
 def test_pan_4_a_stored_password_is_a_salted_hash_that_verifies() -> None:

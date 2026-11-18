@@ -70,6 +70,27 @@ export type Rules = {
   checked_by_model: boolean | null;
 };
 
+export type DayUsage = {
+  day: string;
+  conversations: number;
+  replied: number;
+  refused: number;
+  handed_off: number;
+  blocked_drafts: number;
+  model_calls: number;
+  cost_microusd: number;
+};
+
+export type Usage = {
+  plan: "basic" | "pro";
+  monthly_budget_microusd: number | null;
+  spent_this_month_microusd: number;
+  level: "normal" | "economy" | "exhausted";
+  /** Conversations with an answer in the period, each counted once. */
+  conversations: number;
+  days: DayUsage[];
+};
+
 /** A row of the conversation list, already worded for the screen. */
 export type ConversationRow = {
   id: string;
