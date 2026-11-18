@@ -27,3 +27,7 @@ No interrupt, approval only as a domain record that a later job executes. It wor
 ## Cost of this choice
 
 I do not use LangGraph's built-in message memory, so windowing and summarizing history are mine to write. The checkpoint tables grow by one thread per turn and need a retention job. And the rule "a resumed turn validates again before writing" has to be kept by hand, because the world may have changed between the pause and the resume.
+
+## As built
+
+The checkpointer is LangGraph's `AsyncPostgresSaver` on the same PostgreSQL, with durability `exit`: one checkpoint when a turn stops, which in practice means a turn waiting for the owner. Tests resume a paused turn through a second checkpointer object that shares nothing with the first but the database, which is how they stand for another worker process. A turn that is retried deletes its thread before it starts, so the graph is never given new input on top of a paused run, the case the documentation leaves undefined. Checkpoints are deserialized against an explicit list of this project's types.

@@ -12,6 +12,8 @@ Everything here was read on the linked page on 2026-11-17. A few items were obse
 - Durability is `exit`, `async` or `sync` per execution. `sync` persists the checkpoint before the next step starts; `async` carries a small risk of a missing checkpoint on a crash. (https://docs.langchain.com/oss/python/langgraph/checkpointers#durability-modes)
 - State can be a `TypedDict`, a dataclass or a Pydantic model. With Pydantic, runtime validation happens only on the input to the first node. (https://docs.langchain.com/oss/python/langgraph/graph-api-state)
 
+- Observed by running `langgraph` 1.2.22 with `langgraph-checkpoint-postgres` 3.2.1 on 2026-11-18 (backend/tests/worker/test_approval.py). A node that calls `interrupt` stops the run and `ainvoke` returns the state with the pending value under `__interrupt__`. `Command(resume=...)` on the same thread id, through a different `AsyncPostgresSaver` object on the same database, continues from that node, and the node runs again from its first line. With `durability="exit"` the checkpoint of the interrupted run is there to resume from. `JsonPlusSerializer(allowed_msgpack_modules=[...])` given this project's dataclasses and Pydantic models round-trips them; without a list the library accepts unregistered types with a warning unless `LANGGRAPH_STRICT_MSGPACK` is set. `setup()` creates the four tables for whichever role runs it, and another role needs explicit grants on them.
+
 ## Model SDKs
 
 - `langchain-openai` 1.8.0 (2026-11-13) recommends `ChatOpenAI` on the Azure v1 route. (https://docs.langchain.com/oss/python/integrations/chat/azure_chat_openai)
@@ -134,7 +136,7 @@ Base: https://www.postgresql.org/docs/current (PostgreSQL 18)
 
 Each of these is either tested in the phase named or carried as a risk.
 
-- LangGraph: what happens when a thread with a pending interrupt receives a new input instead of a resume. Not documented. My design avoids the case (ADR 0002), and Phase 2 has a test for it anyway.
+- LangGraph: what happens when a thread with a pending interrupt receives a new input instead of a resume. Not documented. The code never does it: a paused turn is only resumed, and a turn that starts over deletes its thread first (ADR 0002).
 - LangGraph: whether a checkpoint written by one version of the graph can be resumed after a deploy that changed the graph. Matters for approvals that stay pending across a release. Phase 2.
 - LangGraph checkpointer: no guidance on a custom schema, tenant isolation or RLS for its tables, and no documented pool settings.
 - WhatsApp: whether the signature is computed over the exact raw bytes of the body. The docs say "the post body payload". Phase 5, against the real test number.

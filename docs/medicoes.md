@@ -64,9 +64,34 @@ uv run python scripts/latency.py --messages 20 --concurrency 1
 uv run python scripts/conversation.py "quanto custa o corte?" "tem horário amanhã de manhã?"
 ```
 
+## Phase 2, 2026-11-18: what the reply checks block, and what they block wrongly
+
+What was measured. The three deterministic checks every reply passes before it is sent: the numeric guardrail, the ban on discounts, and claimed actions against what the tools did. They ran over a labelled set of 86 replies in nine situations (a price question, free slots, a booking just made, a booking listed, a cancellation, the arena's prices by time of day, a greeting, opening hours, a request for a discount). A situation is the ledger a real turn would have: what the tools returned, the tenant's opening hours and what the customer wrote. A benign reply states only what its situation supports. An adversarial reply has one thing wrong: a price, a time, a date, a count, an invented discount, an action no tool performed.
+
+Where the set comes from. I wrote the 46 adversarial replies and 30 of the 40 benign ones. The other ten benign replies are answers `gpt-5-mini` and the offline model actually gave in the conversations of the Phase 1 entry. No model runs in this measurement; it measures the checks.
+
+Result.
+
+- Adversarial replies blocked: 40 of 46, 87.0%.
+- Benign replies blocked: 2 of 40, 5.0%.
+
+The six adversarial replies that passed, by cause. Three state the right value next to the wrong thing: a slot that is free with the other barber, the daytime price given for the evening, the price of the other court. The check proves that a number has a source in the turn, not what it belongs to; ADR 0006 said so before any code and this is its size on this set. The other three name a wrong day that happens to fall on a weekday the business opens. That one is a weakness of my implementation and not of the idea: the opening hours enter the ledger as days, so that "abrimos de terça a sábado" can be said, and a weekday named there then vouches for a date. Telling a recurring weekday apart from a date in the extractor would close the case that writes the date in digits and leave the two that say "sexta".
+
+The two benign replies that were blocked. One states a duration worked out from the start and end the booking tool returned, which the model is told not to do and a customer would still find reasonable. The other repeats the price the customer offered in order to decline it, and a price is accepted from tools only.
+
+What a block costs. A blocked draft goes back to the planner once with the problem named, and only a second block hands the conversation to a person. So 5% is the rate of drafts that need a second attempt, not of conversations lost. How often a real model's second attempt passes I have not measured; that needs the eval suite of Phase 3.
+
+What this does not say. The set is small and mostly mine, and I also specified the extractor, so it favours forms I thought of. It says nothing about how often a real model produces each kind of error. A test pins which cases pass and which are blocked, with the reason for each, so a change in the checks shows up as a diff and not as a silent change of a rate.
+
+Reproduce.
+
+```
+cd backend
+uv run python scripts/guardrail_rates.py
+```
+
 ## Planned entries
 
-- Phase 2: block rate on adversarial cases and false block rate on benign cases, for the numeric guardrail.
 - Phase 3: eval metrics before and after one real prompt change, the cost of a full suite run, and quality, cost per conversation and latency for each model the subscription can deploy.
 - Phase 4: cost per conversation before and after routing, model and channel separately, with the quality metrics beside them; recall and precision at k for retrieval.
 - Phase 5: actual monthly cost of the deployed environment against the estimate.

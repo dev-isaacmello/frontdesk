@@ -90,6 +90,14 @@ The queue gives ordering per conversation, but a queue alone does not give exclu
 
 The queue message is a trigger, not the payload. It says "this conversation has unprocessed inbound messages". The worker reads all of them from Postgres after a short quiet window, which is how a burst of messages becomes one turn. A later trigger for messages that were already consumed finds nothing to do.
 
+## As built at the end of Phase 2
+
+The tables above are the design. These are the differences in the migrations so far.
+
+The tenant's policy is one column, `late_change_minutes`, not a document: the only sensitive action today is cancelling or moving a booking inside that notice. `users` and `owner_sessions` exist as described, with the session table named for what it holds. `turn_steps` holds the node timeline of a turn, and `turns` counts the drafts the checks refused. `tool_calls` is not a table: a tool call is in the transcript of its turn and in its step. `unrouted_events`, `tenant_budgets`, `system_flags`, `kb_documents` and `kb_chunks` belong to later phases and do not exist. The checkpointer's tables are in the default schema under the library's own names.
+
+`users` and `owner_sessions` have row-level security enabled and not forced, like `channel_accounts`, because signing in happens before a tenant is known. A test reads the catalog and fails if any other table with a tenant is missing the forced policy.
+
 ## What RLS covers and what it does not
 
 Every table above with a `tenant_id` has the same pair of policies, `USING` and `WITH CHECK`, on the tenant setting. Foreign keys always include `tenant_id` in the referenced key, so a row cannot point at a row of another tenant even if the application tries.

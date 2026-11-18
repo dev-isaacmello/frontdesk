@@ -25,3 +25,7 @@ The rule exactly as first written, tool results as the only origin. A reply that
 ## Cost of this choice
 
 The extractor for pt-BR number and date expressions is the hard part and will have gaps; a gap is a false block, which ends in a handoff a person has to pick up. The check does not know which entity a number belongs to, so a correct price next to the wrong service passes. Both are measured in Phase 2 and published: block rate on adversarial cases next to false block rate on benign ones.
+
+## Measured in Phase 2
+
+On a labelled set of 86 replies the checks blocked 40 of 46 adversarial replies and 2 of 40 benign ones (docs/medicoes.md). Three of the six misses are the limit named above, a right value next to the wrong thing. The other three come from letting the opening hours vouch for weekdays, which is mine to fix. The first block is not a handoff: the draft goes back to the planner once with the value named.

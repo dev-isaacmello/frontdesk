@@ -68,18 +68,20 @@ The provider adapters stay on the vendor SDKs (ADR 0003), confirmed by the owner
 
 A reply that claims an action is checked against the tools of the turn: `compose` returns a declared outcome from a closed list next to the text, and `validate` compares it with what the tools did (GRD-6 in the specification).
 
+## Decided in Phase 2
+
+A claim that something was booked, changed or cancelled is checked by reading the reply, not by an outcome the model declares, and eleph is not used underneath. The lexical check was enough to close the case and adds no dependency.
+
+The owner's rules are checked when they are saved, in the same request, within a time limit. If the model part does not finish, the findings that come from code are still stored and the panel says that the review was partial.
+
+There is one pending approval per conversation and a pending request holds no slot: the approved call is validated again when it runs.
+
 ## Decisions still open
 
 These were taken with the default below so that work could continue. Each can be reversed at the cost stated.
-
-1. Whether eleph goes underneath as the guard for claims about bookings, in addition to the declared outcome. "Has a booking" as "created and not cancelled since" is exactly what it expresses and proves. Its limits apply: no wall clock, so the cancellation deadline has to be emitted by the host as an event, and `z3-solver` is a hard dependency of the package today. To decide in Phase 2 with the first failing cases in hand.
 
 2. Who the MCP server is for. Default: stdio and Streamable HTTP, run locally and in tests, not exposed in the Azure deployment. The SDK's HTTP authorization model is an OAuth resource server, which needs an authorization server I do not want to add.
 
 3. Which models enter the comparison. The subscription has quota for `gpt-5-mini`, `gpt-4.1-mini`, `o4-mini`, `gpt-oss-120b`, two Llama models, five Phi-4 variants, three Mistral models and Codestral. Default: every one of them that can be deployed and accepts tool calling runs the golden set, and the panel shows quality, cost per conversation and latency side by side. Models that cannot call tools are listed as excluded with the reason. A model from a second vendor through its own API is an option that needs a paid key.
 
-4. Rule check on save: synchronous with a timeout, or asynchronous with a "not checked yet" state. My recommendation is synchronous with a short timeout that falls back to "not checked".
-
 5. Trace backend: Phoenix self-hosted as proposed in ADR 0011, or a managed one.
-
-6. Approval scope. I assumed one pending approval per conversation and no slot held while it is pending.

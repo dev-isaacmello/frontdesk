@@ -41,7 +41,7 @@ Scheduling
 
 Agent
 
-- AGT-1 [1] The turn runs as an explicit graph. Phase 1 has load context, classify, refuse, plan and execute, and the planner's last message is the reply. Gate, validate and the regenerating compose join in Phase 2, retrieve in Phase 4.
+- AGT-1 [1] The turn runs as an explicit graph. Phase 1 has load context, classify, refuse, plan and execute, and the planner's last message is the reply. Gate, the approval interrupt and validate join in Phase 2, where a draft that fails goes back to the planner once. Retrieve joins in Phase 4.
 - AGT-2 [1] Every write goes through a tool whose arguments passed schema validation. Tenant and customer come from the worker context, never from model output.
 - AGT-3 [2] A turn stops at fixed limits of tool rounds, model calls and tokens, and ends in handoff instead of an error.
 - AGT-4 [1] A message outside the tenant's business gets the fixed refusal and no further model call.
@@ -59,13 +59,13 @@ Numeric guardrail
 - GRD-1 [2] Every money amount, time, date, duration and count in a reply is extracted, including pt-BR written forms and relative dates.
 - GRD-2 [2] A price, availability or booking time passes only if a tool result of the same turn contains the same typed value.
 - GRD-3 [2] A value that cannot be typed, or has no allowed origin, blocks the reply.
-- GRD-4 [2] The first block regenerates the reply once with the offending value named. The second ends in handoff.
+- GRD-4 [2] The first block sends the draft back to the planner once with the offending value named. The second ends in handoff.
 - GRD-5 [2] The module imports nothing from the rest of the project.
 - GRD-6 [2] A reply that claims a booking, a change or a cancellation is sent only if a tool of the same turn did it.
 
 Approval and handoff
 
-- APR-1 [2] An action the tenant marks as sensitive pauses the turn, appears in the owner's queue, and tells the customer to wait.
+- APR-1 [2] An action the tenant marks as sensitive pauses the turn, appears in the owner's queue, and tells the customer to wait. The one sensitive action today is cancelling or moving a booking inside the tenant's notice.
 - APR-2 [2] The owner's decision resumes that turn. An approved action is validated again before it is written.
 - APR-3 [2] While an approval is pending, new customer messages are answered in new turns.
 - HND-1 [2] The conversation goes to a person when the customer asks, when a turn fails through all its retries, when a turn reaches one of its limits, when the guardrail blocks twice, and when the budget is exhausted. In handoff the agent stays silent.
@@ -106,7 +106,7 @@ Observability and operation
 Panel
 
 - PAN-1 [1] A web chat sends messages through the same pipeline and shows status and the final reply.
-- PAN-2 [2] The owner sees conversations with the step timeline of each reply, the approval queue and the rules editor with findings.
+- PAN-2 [2] The owner signs in and sees conversations with the step timeline of each reply, the approval queue and the rules editor with findings, and can answer a conversation that is in handoff.
 - PAN-3 [4] The owner sees cost and quality by period.
 - PAN-4 [1] No token or key reaches the browser. The browser talks only to the Next.js server.
 - PAN-5 [1] Mobile and desktop are separate layouts, and empty, loading and error states are designed.
@@ -143,12 +143,15 @@ backend/            Python package, migrations, tests
     domain/         catalog, schedule, bookings
     db/             engine, session, tenant context
     tools/          tool objects over the domain
+    guardrail/      typed values read from a reply and checked against a ledger
+    policy/         what a reply may not say, in code
     agent/          graph, nodes, state
     providers/      model port and adapters
     channels/       channel port and adapters
     queue/          queue port and the Service Bus client
     api/            FastAPI application
     worker/         queue consumer
+    evals/          measurements against labelled data
 web/                Next.js panel and chat
 evals/              golden set, evaluators, runner
 infra/              Terraform
@@ -161,7 +164,7 @@ compose.yaml
 Each phase ends with its tests passing, an entry in docs/medicoes.md with a measured number and the command that reproduces it, and a tag.
 
 1. Vertical slice, local. Web chat, queue, worker, graph with scheduling tools, PostgreSQL, seed, compose. Number: latency from message accepted to reply delivered.
-2. Reliability. Guardrail, policy and owner rules, approval, handoff, ordering. Number: block rate on adversarial cases with the false block rate on benign cases.
+2. Reliability. Guardrail, policy and owner rules, approval, handoff, ordering, the owner's panel. Number: block rate on adversarial cases with the false block rate on benign cases.
 3. Evaluation. Golden set, evaluators, CI gate, model comparison. Number: metrics before and after one real prompt change, and the comparison table.
 4. Multi-tenancy and cost. Retrieval with RLS, router, budget. Number: cost per conversation before and after routing, quality beside it.
 5. Azure. Terraform, deploy pipeline, WhatsApp adapter with the test number, applied in a window and destroyed. Number: measured cost of the window against the estimate.

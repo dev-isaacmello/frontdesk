@@ -1,6 +1,6 @@
 # Agent graph
 
-Status: proposed in Phase 0, not implemented.
+Status: proposed in Phase 0 and built through Phase 2. The section "What was built differently" at the end lists where the code departs from this text; `retrieve` is the one node that does not exist yet.
 
 The agent is an explicit LangGraph graph. LangGraph gives me three things I would otherwise write by hand: a typed state passed between nodes, a durable checkpoint after each step, and interrupt and resume for the owner's approval. The model calls inside the nodes go through my own provider port, not through a prebuilt agent.
 
@@ -108,3 +108,23 @@ The handoff path is also a platform requirement. The WhatsApp messaging policy a
 ## Open point in this design
 
 The guardrail covers numbers. It does not cover a reply that claims an action happened when no tool succeeded ("pronto, agendei") and contains no number. I want a deterministic check for that in `validate` as well. The options are in the open questions of the Phase 0 report.
+
+## What was built differently
+
+Written at the end of Phase 2, after the graph had answered real conversations.
+
+There is no separate `compose` node. A draft that fails validation goes back to `plan` with the problem named, as a message the planner reads. The planner can then call a tool before it writes again, which a text-only rewrite could not: the commonest block is a price stated from memory, and the fix is to ask the quote tool.
+
+`notify_wait` is not a node. The graph stops at the interrupt and returns what is waiting; the worker writes the wait notice, the approval request and the state of the turn in one transaction, the same way it closes any other turn. The interrupt is still alone in its node.
+
+Durability is `exit`, not `sync`. A turn that crashes is run again from its start with the same idempotency keys, so the only checkpoint the system needs is the one of a turn that stopped for approval. One checkpoint per turn instead of one per node took the checkpointer off the path of every reply. The thread of a finished turn is deleted.
+
+A checkpoint may only contain a fixed list of this project's types. The serializer is given that list and refuses anything else when it reads a checkpoint.
+
+The open point about claimed actions was closed with a lexical check, not with an outcome the model declares. A model that writes "agendei" can also declare that it claimed nothing; a list of finished verb forms read from the reply does not depend on its honesty. It has the gaps of any word list and they are in the labelled set.
+
+A request the provider's content filter stops before any model reads it, which is what Azure does with a jailbreak attempt, is answered with the fixed refusal. It is not an error and is not retried.
+
+The opening hours of the tenant are in the planner's prompt, and so are the values a reply may take from them. Without them the agent could not say when the business opens except by guessing from free slots.
+
+The handoff after failures is one failed turn, not two in a row.
