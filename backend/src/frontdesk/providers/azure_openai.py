@@ -43,14 +43,15 @@ _STOP_REASONS: dict[str, StopReason] = {
 class AzureOpenAIProvider:
     name = "azure_openai"
 
-    def __init__(self, client: AsyncOpenAI) -> None:
+    def __init__(self, client: AsyncOpenAI, *, reasoning_models: frozenset[str]) -> None:
         self._client = client
+        self._reasoning_models = reasoning_models
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
         started = time.perf_counter()
         try:
             completion = await self._client.chat.completions.create(
-                **_payload(request), timeout=request.timeout_s
+                **self._payload(request), timeout=request.timeout_s
             )
         except openai.APITimeoutError as error:
             raise ModelTimeoutError(str(error)) from error
@@ -64,8 +65,15 @@ class AzureOpenAIProvider:
             raise ModelRejectedError(str(error)) from error
         return _response(request, completion, time.perf_counter() - started)
 
+    def _payload(self, request: ModelRequest) -> dict[str, Any]:
+        payload = _base_payload(request)
+        # A model that does not reason rejects the whole request over this one field.
+        if request.reasoning_effort is not None and request.model in self._reasoning_models:
+            payload["reasoning_effort"] = request.reasoning_effort
+        return payload
 
-def _payload(request: ModelRequest) -> dict[str, Any]:
+
+def _base_payload(request: ModelRequest) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": request.model,
         "messages": [
@@ -92,8 +100,6 @@ def _payload(request: ModelRequest) -> dict[str, Any]:
             "type": "json_schema",
             "json_schema": {"name": "output", "schema": request.output_schema, "strict": True},
         }
-    if request.reasoning_effort is not None:
-        payload["reasoning_effort"] = request.reasoning_effort
     return payload
 
 

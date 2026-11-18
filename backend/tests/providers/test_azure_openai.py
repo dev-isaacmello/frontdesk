@@ -69,7 +69,7 @@ def provider(transport: Any) -> AzureOpenAIProvider:
         max_retries=0,
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(transport)),
     )
-    return AzureOpenAIProvider(client)
+    return AzureOpenAIProvider(client, reasoning_models=frozenset({"gpt-5-mini"}))
 
 
 def request(**overrides: Any) -> ModelRequest:
@@ -98,6 +98,16 @@ async def test_a_request_names_the_deployment_and_carries_no_sampling_parameter(
     ]
     assert "temperature" not in recorder.sent
     assert "tools" not in recorder.sent
+
+
+async def test_a_model_that_does_not_reason_is_not_sent_a_reasoning_effort() -> None:
+    """gpt-4.1-mini answers "Unrecognized request argument supplied: reasoning_effort"."""
+    recorder = Recorder()
+
+    await provider(recorder).complete(request(model="gpt-4.1-mini", reasoning_effort="low"))
+
+    assert recorder.sent["model"] == "gpt-4.1-mini"
+    assert "reasoning_effort" not in recorder.sent
 
 
 async def test_tools_and_the_tool_exchange_are_translated() -> None:

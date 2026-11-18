@@ -6,7 +6,7 @@ import pytest
 
 from frontdesk.providers.ledger import ModelPrice, PriceTable, UnknownModelPriceError
 from frontdesk.providers.port import Usage
-from frontdesk.providers.prices import load_price_table
+from frontdesk.providers.prices import load_price_table, reasoning_models
 
 
 def test_cst_1_cost_is_tokens_times_the_price_per_million() -> None:
@@ -49,3 +49,15 @@ def test_cst_1_the_table_says_when_and_where_each_price_was_read() -> None:
 
     assert table.version == "2026-11-17"
     assert table.models["offline"].cost_microusd(Usage(input_tokens=999, output_tokens=999)) == 0
+
+
+def test_the_catalog_says_which_models_take_a_reasoning_effort() -> None:
+    assert reasoning_models() == frozenset({"gpt-5-mini", "gpt-oss-120b"})
+
+
+def test_cst_1_every_deployed_model_has_a_price() -> None:
+    table = load_price_table()
+    turn = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+
+    assert table.cost_microusd("gpt-4.1-mini", turn) == 2_000_000
+    assert table.cost_microusd("gpt-oss-120b", turn) == 750_000

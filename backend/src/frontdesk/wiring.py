@@ -15,7 +15,7 @@ from frontdesk.providers.azure_openai import AzureOpenAIProvider
 from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.offline import OfflineProvider
 from frontdesk.providers.port import ModelProvider
-from frontdesk.providers.prices import load_price_table
+from frontdesk.providers.prices import load_price_table, reasoning_models
 from frontdesk.queue.port import TriggerQueue
 from frontdesk.queue.servicebus import ServiceBusTriggerQueue, connect
 from frontdesk.worker.handler import WorkerDeps
@@ -54,7 +54,8 @@ def provider_from(settings: Settings) -> ModelProvider:
             api_key=key.get_secret_value() if key else _entra_token_provider(),
             # One retry policy for the whole turn, in the worker, not one per call here.
             max_retries=0,
-        )
+        ),
+        reasoning_models=reasoning_models(),
     )
 
 

@@ -1,4 +1,4 @@
-"""Loads the versioned price table that ships with the package."""
+"""Loads the versioned catalog of models that ships with the package: prices and traits."""
 
 import tomllib
 from decimal import Decimal
@@ -8,9 +8,20 @@ from typing import Any
 from frontdesk.providers.ledger import ModelPrice, PriceTable
 
 
-def load_price_table() -> PriceTable:
+def _catalog() -> dict[str, Any]:
     with resources.files("frontdesk.providers").joinpath("prices.toml").open("rb") as file:
-        document = tomllib.load(file)
+        return tomllib.load(file)
+
+
+def reasoning_models() -> frozenset[str]:
+    """The models that accept a reasoning effort. The others reject a request that has one."""
+    return frozenset(
+        model for model, fields in _catalog()["models"].items() if fields.get("reasoning", True)
+    )
+
+
+def load_price_table() -> PriceTable:
+    document = _catalog()
     return PriceTable(
         version=document["version"],
         models={model: _price(fields) for model, fields in document["models"].items()},

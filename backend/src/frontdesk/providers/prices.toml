@@ -3,6 +3,8 @@
 # `version` is the date the prices were read. Every ledger row stores it, so a cost can
 # always be traced to the table that produced it. Change a price by adding a new dated
 # version in a commit, never by editing history.
+#
+# `reasoning = false` marks a model that takes no reasoning effort. The default is true.
 
 version = "2026-11-17"
 
@@ -14,7 +16,22 @@ input = "0.25"
 cache_read = "0.025"
 output = "2.00"
 
+[models."gpt-4.1-mini"]
+# Azure OpenAI, Global Standard. Meters "gpt 4.1 mini Inp glbl", "cached Inp glbl" and
+# "Outp glbl", priced per thousand tokens.
+input = "0.40"
+cache_read = "0.10"
+output = "1.60"
+# It does not reason, and rejects a request that carries a reasoning effort.
+reasoning = false
+
+[models.gpt-oss-120b]
+# Foundry, Global Standard. Meters "gpt-oss-120B Inp glbl" and "Outp glbl", per thousand.
+input = "0.15"
+output = "0.60"
+
 [models.offline]
 # The deterministic stand-in. It makes no billed call.
+reasoning = false
 input = "0"
 output = "0"
