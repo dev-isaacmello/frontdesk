@@ -21,7 +21,7 @@ _CLAIMS: dict[Action, re.Pattern[str]] = {
     ),
     "rescheduled": re.compile(
         r"\b(?:remarquei|reagendei|alterei|mudei|transferi|remarcad[oa]s?|reagendad[oa]s?"
-        r"|alterad[oa]s?)\b",
+        r"|alterad[oa]s?|mudad[oa]s?|transferid[oa]s?)\b",
         re.IGNORECASE,
     ),
 }

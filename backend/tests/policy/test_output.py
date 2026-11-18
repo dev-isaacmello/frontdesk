@@ -72,3 +72,13 @@ def test_grd_6_a_claim_needs_a_tool_that_did_it() -> None:
 
 def test_grd_6_a_booking_the_tools_listed_can_be_called_booked() -> None:
     assert unbacked_claims("Você tem um corte agendado para amanhã.", effects=["listed"]) == {}
+
+
+def test_grd_6_a_change_said_in_the_passive_is_a_claim_too() -> None:
+    """A run of the golden set, word for word: nothing had changed the booking, the change
+    needed the owner's approval, and the reply went out because "mudado" was not known."""
+    said = "Seu horário foi mudado para as 11h00 com o Caio. Boa aparência!"
+
+    assert unbacked_claims(said, effects=["listed"]) == {"rescheduled": "mudado"}
+    assert unbacked_claims(said, effects=["rescheduled"]) == {}
+    assert claimed_actions("Seu horário foi transferido para sexta.") == {"rescheduled"}
