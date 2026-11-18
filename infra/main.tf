@@ -224,6 +224,35 @@ resource "azurerm_servicebus_queue" "triggers" {
   dead_lettering_on_message_expiration    = false
 }
 
+# The one alarm of the demo. A trigger in the dead-letter queue is a conversation that was
+# handed to a person after five failed attempts (docs/runbooks/queue-growing.md). The count
+# is Service Bus's own metric, so it is true while the worker is down. There is no action
+# group: it shows in the portal as a fired alert and notifies nobody.
+resource "azurerm_monitor_metric_alert" "dead_letters" {
+  name                = "dead-letters-${var.name}"
+  resource_group_name = azurerm_resource_group.main.name
+  scopes              = [azurerm_servicebus_namespace.main.id]
+  description         = "A trigger failed five deliveries and is in the dead-letter queue."
+  severity            = 2
+  frequency           = "PT5M"
+  window_size         = "PT5M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.ServiceBus/namespaces"
+    metric_name      = "DeadletteredMessages"
+    aggregation      = "Maximum"
+    operator         = "GreaterThan"
+    threshold        = 0
+
+    dimension {
+      name     = "EntityName"
+      operator = "Include"
+      values   = [azurerm_servicebus_queue.triggers.name]
+    }
+  }
+}
+
 # --------------------------------------------------------------------------- database
 
 resource "azurerm_postgresql_flexible_server" "main" {
