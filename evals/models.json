@@ -1,0 +1,46 @@
+{
+  "checked": "2026-11-18",
+  "subscription": "Azure for Students",
+  "compared": [
+    "gpt-5-mini",
+    "gpt-4.1-mini",
+    "gpt-oss-120b"
+  ],
+  "excluded": [
+    {
+      "model": "Llama-3.3-70B-Instruct",
+      "reason": "Deploys, classifies with structured output, and rejects the planner's request: \"This model does not support more than one tool call at this time.\"",
+      "reason_pt": "Sobe e classifica mensagens, mas recusa o pedido do planejador: não aceita receber mais de uma ferramenta."
+    },
+    {
+      "model": "Phi-4",
+      "reason": "Deploys, rejects structured output with HTTP 422 and tool calling with \"auto tool choice requires --enable-auto-tool-choice\".",
+      "reason_pt": "Sobe, mas recusa a saída estruturada e a chamada de ferramentas."
+    },
+    {
+      "model": "Phi-4-mini-instruct",
+      "reason": "Deploys, rejects structured output with HTTP 422, and answers without calling the tools it is given.",
+      "reason_pt": "Sobe, recusa a saída estruturada e responde sem chamar as ferramentas que recebe."
+    },
+    {
+      "model": "o4-mini",
+      "reason": "Has quota and cannot be deployed: the model is in deprecating state.",
+      "reason_pt": "Tem cota, mas não pode mais ser implantado: está sendo descontinuado."
+    },
+    {
+      "model": "mistral-small-2503, mistral-medium-2505, Ministral-3B",
+      "reason": "Sold through Azure Marketplace, which refuses a subscription with no payment method.",
+      "reason_pt": "Vendidos pelo Marketplace da Azure, que recusa uma assinatura sem meio de pagamento."
+    },
+    {
+      "model": "Llama-4-Scout-17B-16E-Instruct",
+      "reason": "Sold through Azure Marketplace; the purchase eligibility check fails on this subscription.",
+      "reason_pt": "Vendido pelo Marketplace da Azure; a assinatura não passa na verificação de compra."
+    },
+    {
+      "model": "Codestral-2501, Phi-4-reasoning, Phi-4-mini-reasoning, Phi-4-multimodal-instruct",
+      "reason": "Not tried: a code model and variants of a family that already failed on tool calling.",
+      "reason_pt": "Não testados: um modelo de código e variantes de uma família que já falhou na chamada de ferramentas."
+    }
+  ]
+}

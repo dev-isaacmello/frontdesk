@@ -60,7 +60,7 @@ class AzureOpenAIProvider:
         except (openai.APIConnectionError, openai.InternalServerError) as error:
             raise ModelUnavailableError(str(error)) from error
         except openai.APIStatusError as error:
-            if error.code == _FILTERED:
+            if _was_filtered(error):
                 raise ModelFilteredError(str(error)) from error
             raise ModelRejectedError(str(error)) from error
         return _response(request, completion, time.perf_counter() - started)
@@ -71,6 +71,27 @@ class AzureOpenAIProvider:
         if request.reasoning_effort is not None and request.model in self._reasoning_models:
             payload["reasoning_effort"] = request.reasoning_effort
         return payload
+
+
+def _was_filtered(error: openai.APIStatusError) -> bool:
+    """Whether the content filter stopped the prompt. The models say it in two shapes.
+
+    The Azure OpenAI models answer with an error whose code is `content_filter`. Other
+    models of the same resource answer HTTP 400 around a completion whose only choice
+    finished for that reason.
+    """
+    if error.code == _FILTERED:
+        return True
+    body = error.body
+    if not isinstance(body, dict):
+        return False
+    choices = body.get("choices")
+    return (
+        isinstance(choices, list)
+        and bool(choices)
+        and isinstance(choices[0], dict)
+        and choices[0].get("finish_reason") == _FILTERED
+    )
 
 
 def _base_payload(request: ModelRequest) -> dict[str, Any]:

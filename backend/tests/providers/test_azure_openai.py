@@ -282,6 +282,29 @@ async def test_a_prompt_stopped_by_the_content_filter_is_its_own_error() -> None
         await provider(filtered).complete(request())
 
 
+async def test_a_filtered_prompt_shaped_as_a_completion_is_the_same_error() -> None:
+    """What gpt-oss-120b answers to the same message: HTTP 400 around a completion body."""
+    filtered = Recorder(
+        status=400,
+        body={
+            "id": "15446807",
+            "model": "gpt-oss-120b",
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": ""},
+                    "finish_reason": "content_filter",
+                }
+            ],
+            "usage": {"prompt_tokens": 288, "total_tokens": 288},
+        },
+    )
+
+    with pytest.raises(ModelFilteredError):
+        await provider(filtered).complete(request(model="gpt-oss-120b"))
+
+
 async def test_another_bad_request_is_not_taken_for_the_content_filter() -> None:
     rejected = Recorder(status=400, body={"error": {"code": "invalid_request", "message": "x"}})
 
