@@ -302,6 +302,13 @@ resource "azurerm_container_app_environment" "main" {
   resource_group_name        = azurerm_resource_group.main.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   tags                       = local.tags
+
+  # Pay per use and nothing reserved. Azure adds this profile by itself; declaring it
+  # keeps a later plan from proposing to remove it.
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }
 }
 
 # Azure created this environment as "express" on the student subscription: a shared tier
@@ -327,6 +334,7 @@ resource "azurerm_container_app" "api" {
   name                         = "ca-${var.name}-api"
   resource_group_name          = azurerm_resource_group.main.name
   container_app_environment_id = azurerm_container_app_environment.main.id
+  workload_profile_name        = "Consumption"
   revision_mode                = "Single"
   tags                         = local.tags
 
@@ -422,6 +430,7 @@ resource "azurerm_container_app" "worker" {
   name                         = "ca-${var.name}-worker"
   resource_group_name          = azurerm_resource_group.main.name
   container_app_environment_id = azurerm_container_app_environment.main.id
+  workload_profile_name        = "Consumption"
   revision_mode                = "Single"
   tags                         = local.tags
 
@@ -503,6 +512,7 @@ resource "azurerm_container_app" "web" {
   name                         = "ca-${var.name}-web"
   resource_group_name          = azurerm_resource_group.main.name
   container_app_environment_id = azurerm_container_app_environment.main.id
+  workload_profile_name        = "Consumption"
   revision_mode                = "Single"
   tags                         = local.tags
 
@@ -572,6 +582,7 @@ resource "azurerm_container_app_job" "setup" {
   location                     = azurerm_resource_group.main.location
   resource_group_name          = azurerm_resource_group.main.name
   container_app_environment_id = azurerm_container_app_environment.main.id
+  workload_profile_name        = "Consumption"
   replica_timeout_in_seconds   = 600
   replica_retry_limit          = 0
   tags                         = local.tags

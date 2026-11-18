@@ -1,0 +1,38 @@
+{
+  "at": "2026-11-18T14:36:48+00:00",
+  "levels": [
+    {
+      "customers": 1,
+      "seconds": 60.9,
+      "answered": 13,
+      "handed_to_a_person": 0,
+      "unanswered": 0,
+      "replies_per_second": 0.21,
+      "p50_ms": 4372,
+      "p95_ms": 6256,
+      "max_ms": 6335
+    },
+    {
+      "customers": 3,
+      "seconds": 66.7,
+      "answered": 38,
+      "handed_to_a_person": 0,
+      "unanswered": 0,
+      "replies_per_second": 0.57,
+      "p50_ms": 4487,
+      "p95_ms": 9798,
+      "max_ms": 10224
+    },
+    {
+      "customers": 6,
+      "seconds": 70.9,
+      "answered": 22,
+      "handed_to_a_person": 0,
+      "unanswered": 0,
+      "replies_per_second": 0.31,
+      "p50_ms": 17008,
+      "p95_ms": 29131,
+      "max_ms": 32038
+    }
+  ]
+}
