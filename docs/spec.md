@@ -62,6 +62,7 @@ Numeric guardrail
 - GRD-4 [2] The first block sends the draft back to the planner once with the offending value named. The second ends in handoff.
 - GRD-5 [2] The module imports nothing from the rest of the project.
 - GRD-6 [2] A reply that claims a booking, a change or a cancellation is sent only if a tool of the same turn did it.
+- GRD-7 [5] A draft that is empty, or mostly symbols and not words, is not sent: it goes back to the planner like any blocked draft. Added after the first real conversation, where one of each got through.
 
 Approval and handoff
 

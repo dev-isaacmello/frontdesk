@@ -1,8 +1,8 @@
 """The checks a draft reply has to pass before it is sent, as one list of problems.
 
-Three deterministic checks, none of them a model: the numeric guardrail, the ban on
-discounts, and claimed actions against what the tools did. Each problem is worded for the
-planner, which gets one chance to write the reply again.
+Deterministic checks, none of them a model: that the draft is a text at all, the numeric
+guardrail, the ban on discounts, and claimed actions against what the tools did. Each
+problem is worded for the planner, which gets one chance to write the reply again.
 """
 
 import datetime
@@ -11,6 +11,15 @@ from collections.abc import Iterable
 from frontdesk.guardrail import Sourced, check
 from frontdesk.policy.claims import Action, unbacked_claims
 from frontdesk.policy.output import discount_offers
+from frontdesk.policy.shape import not_a_text
+
+_NOT_A_TEXT = {
+    "empty": "a resposta veio vazia: escreva a resposta ao cliente",
+    "garbled": (
+        "a resposta não é um texto legível: escreva de novo, em português, "
+        "com frases completas e sem símbolos soltos"
+    ),
+}
 
 _CLAIM_WORDS: dict[Action, str] = {
     "booked": "agendado",
@@ -33,6 +42,10 @@ def review(
     word such as "gratuito" that the owner wrote there may be repeated; anywhere else it
     is an offer nobody registered.
     """
+    shape = not_a_text(reply)
+    if shape is not None:
+        # Nothing else is worth saying about a draft that is not a text.
+        return [_NOT_A_TEXT[shape]]
     problems: list[str] = []
     for violation in check(reply, ledger, today=today).violations:
         if violation.reason == "untyped":

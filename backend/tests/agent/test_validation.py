@@ -155,3 +155,25 @@ async def test_agt_3_a_correction_does_not_get_around_the_limit_of_model_calls(
 
     assert (result.outcome, result.handoff_reason) == ("handoff", "turn_limit")
     assert len(provider.requests) == 2
+
+
+async def test_grd_7_an_empty_draft_goes_back_once_and_then_to_a_person(
+    sessions: SessionFactory,
+) -> None:
+    deps, provider = agent(sessions, IN_SCOPE, says(""), says("   "))
+
+    result = await run_turn(deps, await start_turn(sessions, "ola"))
+
+    assert (result.outcome, result.handoff_reason) == ("handoff", "guardrail_blocked")
+    assert result.reply == HANDOFF_NOTICE
+    assert "vazia" in provider.requests[2].messages[-1].content
+
+
+async def test_grd_7_a_garbled_draft_is_written_again(sessions: SessionFactory) -> None:
+    deps, _ = agent(
+        sessions, IN_SCOPE, says("Seu ... ​ ... Sorry ... ?\n\n\n…\n```\nOops … / ?"), says("Oi!")
+    )
+
+    result = await run_turn(deps, await start_turn(sessions, "ola"))
+
+    assert (result.outcome, result.reply, result.blocks) == ("replied", "Oi!", 1)
