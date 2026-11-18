@@ -2,7 +2,7 @@
 
 Terraform for the environment described in [ADR 0008](../docs/adr/0008-one-cloud-azure.md), [0009](../docs/adr/0009-container-apps-over-foundry-agent-service.md) and [0010](../docs/adr/0010-public-endpoints-behind-identity-and-a-firewall.md): three container apps and a setup job, PostgreSQL flexible server, a Service Bus queue with sessions, a vault, a registry and a log workspace, in one resource group. It is meant to be applied for a measured window and destroyed, and nothing here runs by itself: every apply is a person's decision.
 
-The configuration passes `terraform validate` against the provider version in the lock file. Until the first window is recorded in [docs/medicoes.md](../docs/medicoes.md) it has not been applied, and the steps below are the plan and not a report.
+It was applied for the first time on 2026-11-18, and the steps below are what worked then. What the first apply found wrong, and what it changed here, is in [docs/medicoes.md](../docs/medicoes.md).
 
 ## What it costs
 

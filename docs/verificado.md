@@ -147,6 +147,18 @@ Base: https://www.postgresql.org/docs/current (PostgreSQL 18)
 - pgvector: with approximate indexes "filtering is applied after the index is scanned", so a filtered query can return fewer rows than the limit. Iterative index scans exist since 0.8.0. For tenant isolation the README recommends list partitioning or separate tables, because a shared approximate index lets one tenant's vectors affect another's recall. HNSW indexes `vector` up to 2,000 dimensions. Latest release 0.8.7 (2026-10-01); flexible server ships 0.8.2 on PostgreSQL 18. (https://github.com/pgvector/pgvector, https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)
 - Exclusion constraints on range types prevent overlap; `btree_gist` adds equality on scalar columns to the same constraint; a predicate makes the constraint partial. `btree_gist` is a trusted extension and is available on RDS for PostgreSQL 18. (rangetypes.html, sql-createtable.html, btree-gist.html)
 
+## What Azure did on the first apply, 2026-11-18
+
+Observed on the student subscription in North Central US, and where the documentation says otherwise.
+
+- The Container Apps environment came up with `environmentMode` `Express` without asking for it. The express FAQ says "Templates that create a new environment create a standard Azure Container Apps environment by default", and lists jobs, Key Vault secret references, custom KEDA scalers and system-assigned identities as unsupported in express. The property is readable and writable with API version 2026-07-01, and the API names its values in an error: WorkloadProfiles, ConsumptionOnly, Reserved, Express, Archived. A PATCH from Express to WorkloadProfiles passed through Archived and took about twenty-five minutes. (https://learn.microsoft.com/en-us/azure/container-apps/express-overview, https://learn.microsoft.com/en-us/azure/container-apps/express-faq, read 2026-11-18)
+- PostgreSQL flexible server on B1ms answered `AvailabilityZoneNotAvailable` for zone 1, and `list-skus` returns no zone for that size here.
+- A workload-profiles environment with no virtual network reported 181 outbound addresses in twenty-one /16 blocks. PostgreSQL created firewall rules serially, one every 64 seconds.
+- In a database created by the server's administrator with another role as owner, that owner could not create a table in `public`: permission denied for schema public.
+- The role Container Apps Contributor has no action on `Microsoft.App/jobs`; a principal holding only it is told the job does not exist.
+- A throttled chat call to `gpt-oss-120b` carried a retry-after between 0.1 and 1.0 s in every one of 84 cases.
+- Cost Management's query API answers for this subscription, in BRL, and showed the month's model spend. A resource group created hours earlier had no row yet.
+
 ## What the documentation did not settle
 
 Each of these is either tested in the phase named or carried as a risk.

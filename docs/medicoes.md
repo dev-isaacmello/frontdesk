@@ -261,6 +261,42 @@ What is still not right. Six and twelve customers got 0.30 replies per second an
 
 Reproduce. The commands of the entry above, at the commit named.
 
+## Phase 5, 2026-11-18: the environment applied on Azure, and what the first apply found
+
+What was measured. Whether the Terraform, the deploy workflow and the system itself work on Azure, which until this day had only passed `terraform validate`; and the same load script as Phase 6, against the deployment. This entry is written with the window still open. Its cost against the estimate and the first exchange with WhatsApp are not in it yet, and it says so again at the end.
+
+Environment. An Azure for Students subscription, region North Central US. Three container apps of 0.5 vCPU and 1 GiB with one replica each, a setup job, PostgreSQL flexible server 18 on B1ms, Service Bus Standard with a session queue, Key Vault, a Basic registry and a log workspace. `gpt-oss-120b` and `text-embedding-3-small` in the same region. Terraform 1.17.2, azurerm 4.81.0, azapi 2.14.0. The first resource was created at about 13:00 UTC.
+
+What works, as observed. The deploy workflow signs in to Azure with a federated identity and no stored secret, builds and pushes both images, runs the job that migrates and seeds, and rolls the three apps; its run on commit `3b4b896` did all of it. A customer message sent to the public API was answered through the real Service Bus and by the model, which the worker calls as its managed identity with no key: a price in 8.2 s on a cold path, and a question the knowledge base answers in 3.4 s. Service Bus refuses connection strings. After the last change `terraform plan` proposes nothing.
+
+What the first apply found. Five things were wrong, none of which `terraform validate` or the local stack could have shown.
+
+- The subscription refuses a named availability zone for the database in this region. The server is now created without one.
+- Azure created the Container Apps environment as "express", a shared tier with no jobs and no Key Vault references, on which two of the apps and the job were refused. Its documentation says a template gets a standard environment unless it asks for express; this one did not ask. azurerm has no argument for the mode, so the configuration sets it through the resource API. The change took Azure about twenty-five minutes.
+- Without a virtual network the environment leaves through 181 addresses of a pool shared between customers, where ADR 0010 expected one or two of its own. PostgreSQL creates firewall rules one at a time, at 64 seconds each by the nine I let it create: three hours for a list that kept nobody in particular out. The database now has the rule for any Azure service, and the ADR says what that gives up.
+- On Azure the `public` schema of a new database does not belong to the database's owner, so the owner role could not create its first table. The bootstrap now grants it, and a test gives a local cluster the same ownership.
+- The role that lets the deploy identity change the apps does not cover jobs. It now holds the jobs role on the setup job alone.
+
+Result under load, from a laptop in Brazil against the deployment, 60 s per level, one run.
+
+- 1 customer: 13 answered, median 4,372 ms, p95 6,256 ms.
+- 3 customers: 38 answered, 0.57 per second, median 4,487 ms, p95 9,798 ms.
+- 6 customers: 22 answered and none handed to a person, median 17,008 ms, p95 29,131 ms.
+
+These are the numbers of the local stack on the same model, within what one run can tell apart: 4,805 and 7,062 ms at three customers, 16,728 and 27,616 at six. The limit is the same deployment quota in both places. So the real Service Bus, across a network, did not add a delay I can see at this load, which is the question the Phase 1 entry left open. It is not an answer about throughput: one worker replica, a model quota that binds at three customers, and no run without a model on Azure.
+
+What it does not say yet. What the window cost: Cost Management answers for this subscription, and showed nothing for the new resource group a few hours in. Whether Meta's webhook signature verifies and a message goes out, which waits for the app's secret and a token. And nothing here was run with a second worker replica, with metrics exported, or with the alert on dead letters made to fire.
+
+Reproduce. `infra/README.md`, then:
+
+```
+export FRONTDESK_WEBCHAT_SECRET="$(az keyvault secret show --vault-name <vault> --name webchat-secret --query value -o tsv)"
+cd backend
+uv run python scripts/conversation.py --base-url <api_url> "quanto custa o corte amanhã às 10h?"
+uv run python scripts/load.py --base-url <api_url> --levels 1,3,6 --seconds 60 \
+  --out ../ops/load/azure-gpt-oss-120b.json
+```
+
 ## Planned entries
 
-- Phase 5: actual monthly cost of the deployed environment against the estimate.
+- Phase 5: what the window cost against the estimate, and the first exchange with WhatsApp.
