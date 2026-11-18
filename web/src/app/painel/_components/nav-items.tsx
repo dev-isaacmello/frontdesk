@@ -4,6 +4,7 @@ const ITEMS = [
   { href: "/painel", label: "Conversas", short: "Conversas" },
   { href: "/painel/aprovacoes", label: "Aprovações", short: "Aprovações" },
   { href: "/painel/regras", label: "Regras da casa", short: "Regras" },
+  { href: "/painel/modelos", label: "Modelos de IA", short: "Modelos" },
 ] as const;
 
 function isCurrent(href: string, pathname: string | undefined): boolean {
@@ -27,7 +28,7 @@ function Count({ value }: { value: number }) {
   );
 }
 
-/** The three places of the panel: a list on the side of a desktop, tabs at the foot of a phone. */
+/** The four places of the panel: a list on the side of a desktop, tabs at the foot of a phone. */
 export function NavItems({
   variant,
   pathname,
@@ -39,7 +40,7 @@ export function NavItems({
 }) {
   if (variant === "tabs") {
     return (
-      <ul className="grid grid-cols-3">
+      <ul className="grid grid-cols-4">
         {ITEMS.map((item) => {
           const current = isCurrent(item.href, pathname);
           return (
