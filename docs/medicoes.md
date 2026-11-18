@@ -297,6 +297,27 @@ uv run python scripts/load.py --base-url <api_url> --levels 1,3,6 --seconds 60 \
   --out ../ops/load/azure-gpt-oss-120b.json
 ```
 
+## Phase 5, 2026-11-18, later: the first real conversation on WhatsApp, and four things between a message and its reply
+
+What was measured. Whether a message sent from a phone to the test number reaches the deployed system, is answered by the agent and arrives back on the phone. It did, at 16:55 UTC, on the third message. Each of the first two got further than the one before and stopped on something no test with canned payloads could show.
+
+Environment. The deployment of the entry above. Meta's test number, the app in development mode, a temporary access token, one phone on the list of allowed recipients.
+
+What it took, in the order it was found.
+
+- Nothing arrived. The webhook was verified by Meta and the `messages` field subscribed, and a message from the phone produced no request. The dashboard warns that an unpublished app receives only test notifications, which I took for the cause and it was not. The Graph API showed the WhatsApp account subscribed to one app only, Meta's own dashboard listener. One call subscribing it to this app, and the next message arrived. The sample notification the dashboard sends had already been accepted, which settled the open question of the signature: Meta signs the bytes the API reads.
+- The first reply was refused with 401. The token had expired and been replaced in the vault, and the worker still held the old one after a restart: an app that references a vault secret without a version gets the new value when the platform refreshes it, within half an hour. The apps now name the version, so an apply changes the reference and a restart reads it.
+- The second reply was refused with 400 and code 131030, recipient not in allowed list. The customer's number arrives as WhatsApp's id for it, which for a Brazilian mobile outside area codes 11 to 28 has no ninth digit, and the adapter replied to that. Two direct calls confirmed it: addressed without the digit, refused; with it, accepted, and the answer named a 12-digit id for the 13-digit number. The adapter now addresses a Brazilian mobile as dialled.
+- The third message was answered, on the fifth and last attempt. The classifier had failed four times with a validation error: the model returned an empty text. Reproduced locally in four identical questions, the fourth going to a person, and then in isolation: given the earlier replies of the agent as chat turns, `gpt-oss-120b` answered the classification with nothing in 12 of 12 calls, and with one message and no history in none. With the same history quoted inside a single message it answered 60 of 60. The golden set had one conversation of more than one turn, which is why its numbers never showed this.
+
+The golden set after it. Four conversations of three turns were added, among them the one that failed, which makes 41, and the classifier's input changed, so the set ran three times again on `gpt-oss-120b`: 41, 40 and 40 of 41 passed, at USD 0.0007 per conversation, and 39 pass in every run, which is the gate's new baseline. The two that fail once each are bookings the model answered without making, as before the change. The runs of the other models are of the earlier prompts and the earlier 37.
+
+Two things about the channel that are not defects of mine and that an operator has to know. A temporary token lasted under ninety minutes both times, ending on the hour. And the verify token travels in the query string of Meta's check, so the HTTP server's access log had it until the log was made to drop query strings.
+
+What it says and does not say. The path works end to end against Meta: a signed notification in, a turn, a send accepted with 200, and the three status notifications that follow a delivery, all accepted. It was one phone, one tenant and a handful of messages. The cost Meta reports per delivered message was not read back, templates and the 24-hour window were not exercised by this system, and a token that lasts ninety minutes means this deployment answers WhatsApp for ninety minutes at a time.
+
+Reproduce. Not from this repository alone: it needs a Meta app, a test number and a phone. `infra/README.md` says where the three values go.
+
 ## Planned entries
 
-- Phase 5: what the window cost against the estimate, and the first exchange with WhatsApp.
+- Phase 5: what the window cost against the estimate.
