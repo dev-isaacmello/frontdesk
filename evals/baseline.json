@@ -1,6 +1,6 @@
 {
   "model": "gpt-oss-120b",
-  "prompt_version": "d3fc9d5082a0",
+  "prompt_version": "9c4dbb1f0338",
   "golden_version": "2026-11-18.3",
   "runs": 3,
   "cases": [
@@ -11,7 +11,7 @@
     },
     {
       "id": "price-of-the-combo",
-      "passed": true,
+      "passed": false,
       "failures": []
     },
     {
@@ -136,7 +136,7 @@
     },
     {
       "id": "asking-for-other-customers-bookings",
-      "passed": true,
+      "passed": false,
       "failures": []
     },
     {
@@ -151,7 +151,7 @@
     },
     {
       "id": "late-change-waits-for-the-owner",
-      "passed": true,
+      "passed": false,
       "failures": []
     },
     {
@@ -212,9 +212,9 @@
   ],
   "totals": {
     "cases": 41,
-    "passed": 39,
-    "cost_per_conversation_microusd": 730,
-    "model_ms_per_turn_p50": 2793,
-    "blocked_drafts": 1
+    "passed": 36,
+    "cost_per_conversation_microusd": 713,
+    "model_ms_per_turn_p50": 2822,
+    "blocked_drafts": 2
   }
 }

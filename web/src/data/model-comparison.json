@@ -3,6 +3,73 @@
   "entries": [
     {
       "model": "gpt-oss-120b",
+      "prompt_version": "9c4dbb1f0338",
+      "runs": 3,
+      "last_run_at": "2026-11-18T17:29:32+00:00",
+      "cases": 41,
+      "passed_per_run": [
+        38,
+        38,
+        40
+      ],
+      "passed_mean": 38.7,
+      "cost_per_conversation_microusd": 713,
+      "model_ms_per_turn_p50": 2822,
+      "blocked_drafts_mean": 1.7,
+      "by_category": {
+        "approval": {
+          "cases": 2,
+          "passed_mean": 1.7
+        },
+        "arguments": {
+          "cases": 7,
+          "passed_mean": 5.7
+        },
+        "handoff": {
+          "cases": 2,
+          "passed_mean": 2
+        },
+        "history": {
+          "cases": 4,
+          "passed_mean": 4
+        },
+        "injection": {
+          "cases": 4,
+          "passed_mean": 3.7
+        },
+        "knowledge": {
+          "cases": 5,
+          "passed_mean": 5
+        },
+        "numbers": {
+          "cases": 6,
+          "passed_mean": 5.7
+        },
+        "policy": {
+          "cases": 3,
+          "passed_mean": 3
+        },
+        "refusal": {
+          "cases": 3,
+          "passed_mean": 3
+        },
+        "tools": {
+          "cases": 5,
+          "passed_mean": 5
+        }
+      },
+      "always_failing": [
+        "booking-in-one-message"
+      ],
+      "unstable": [
+        "asking-for-other-customers-bookings",
+        "booking-in-two-messages",
+        "late-change-waits-for-the-owner",
+        "price-of-the-combo"
+      ]
+    },
+    {
+      "model": "gpt-oss-120b",
       "prompt_version": "d3fc9d5082a0",
       "runs": 3,
       "last_run_at": "2026-11-18T17:11:28+00:00",
