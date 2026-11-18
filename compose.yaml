@@ -86,6 +86,8 @@ services:
       FRONTDESK_DATABASE_NAME: frontdesk
       FRONTDESK_OWNER_PASSWORD: ${FRONTDESK_OWNER_PASSWORD:-local-owner}
       FRONTDESK_APP_PASSWORD: ${FRONTDESK_APP_PASSWORD:-local-app}
+      # The two demo owners sign in to the panel with this. A local default, like the rest.
+      FRONTDESK_DEMO_OWNER_PASSWORD: ${FRONTDESK_DEMO_OWNER_PASSWORD:-local-owner-demo}
       FRONTDESK_MIGRATIONS_DATABASE_URL: postgresql+psycopg://frontdesk_owner:${FRONTDESK_OWNER_PASSWORD:-local-owner}@postgres:5432/frontdesk
     depends_on:
       postgres:

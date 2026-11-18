@@ -107,6 +107,7 @@ async def test_ten_1_every_table_with_a_tenant_has_forced_row_level_security(
     with psycopg.connect(database.superuser_dsn, dbname=PLAN.database) as connection:
         unprotected = [name for (name,) in connection.execute(query).fetchall()]
 
-    # channel_accounts is the documented exception: enabled but not forced, so that the
-    # function that finds a tenant before one is set can read it as the owner.
-    assert unprotected == ["channel_accounts"]
+    # The documented exceptions: enabled but not forced, so that the functions that find a
+    # tenant before one is set (by channel address, by owner e-mail, by session token)
+    # can read them as the owner of the tables.
+    assert unprotected == ["channel_accounts", "owner_sessions", "users"]

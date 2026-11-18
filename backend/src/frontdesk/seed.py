@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import time
 from uuid import UUID, uuid5
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from frontdesk.db.models import (
@@ -18,8 +19,10 @@ from frontdesk.db.models import (
     ServicePrice,
     ServiceResource,
     Tenant,
+    User,
 )
 from frontdesk.db.session import SessionFactory, tenant_transaction
+from frontdesk.domain.owners import hash_password
 
 _NAMESPACE = UUID("6f1d3c52-7a0e-4b57-9d5e-2f0c8a41b6e3")
 _MIDNIGHT = time(0, 0)
@@ -51,6 +54,10 @@ class TenantSeed:
     @property
     def id(self) -> UUID:
         return uuid5(_NAMESPACE, self.slug)
+
+    @property
+    def owner_email(self) -> str:
+        return f"dono@{self.slug}.example"
 
     def resource_id(self, name: str) -> UUID:
         return uuid5(self.id, f"resource:{name}")
@@ -106,7 +113,12 @@ ARENA = TenantSeed(
 TENANTS = (BARBERSHOP, ARENA)
 
 
-async def seed(factory: SessionFactory) -> None:
+async def seed(factory: SessionFactory, owner_password: str | None = None) -> None:
+    """Creates the fictional tenants, and an owner account for each when a password is given.
+
+    The password is the same for both demo owners and comes from the environment of the
+    setup. Without one there are no owner accounts and the panel cannot be signed in to.
+    """
     for tenant in TENANTS:
         async with tenant_transaction(factory, tenant.id) as session:
             row = await session.get(Tenant, tenant.id)
@@ -115,6 +127,21 @@ async def seed(factory: SessionFactory) -> None:
             else:
                 # Settings added after a database was first seeded reach it here.
                 row.late_change_minutes = tenant.late_change_minutes
+            if owner_password is not None:
+                await _add_owner(session, tenant, owner_password)
+
+
+async def _add_owner(session: AsyncSession, tenant: TenantSeed, password: str) -> None:
+    known = await session.scalar(select(User.id).where(User.email == tenant.owner_email))
+    if known is None:
+        session.add(
+            User(
+                tenant_id=tenant.id,
+                email=tenant.owner_email,
+                name=f"Responsável, {tenant.name}",
+                password_hash=hash_password(password),
+            )
+        )
 
 
 async def _add_tenant(session: AsyncSession, tenant: TenantSeed) -> None:

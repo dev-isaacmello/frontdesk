@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from frontdesk.domain.approvals import PendingApproval
@@ -27,6 +27,19 @@ class TurnInput:
     """The lease on the conversation this turn runs under. Its final write names it."""
 
 
+@dataclass(frozen=True)
+class Step:
+    """One node of the graph as it ran: which, how long, and a small outcome.
+
+    The detail never holds what a customer wrote. It is what the owner's panel shows as
+    the timeline of a reply.
+    """
+
+    node: str
+    duration_ms: int
+    detail: dict[str, Any]
+
+
 type HandoffReason = Literal[
     "customer_asked", "agent_failed", "guardrail_blocked", "turn_limit", "budget_exhausted"
 ]
@@ -45,3 +58,6 @@ class TurnResult:
 
     blocks: int = 0
     """How many drafts of the reply the checks refused before this result."""
+
+    steps: tuple[Step, ...] = ()
+    """Every node that ran in this turn so far, in order."""

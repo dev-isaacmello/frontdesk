@@ -20,8 +20,11 @@ from tests.fakes import InMemoryTriggerQueue
 
 POSTGRES_IMAGE = "pgvector/pgvector:pg18"
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+OWNER_PASSWORD = "the-demo-owner-password"
 PLAN = BootstrapPlan(database="frontdesk", owner_password="owner", app_password="app")
 WRITTEN_BY_TESTS = (
+    "owner_sessions",
+    "turn_steps",
     "approval_requests",
     "rule_findings",
     "house_rules",
@@ -102,7 +105,7 @@ async def engine(database: Database) -> AsyncIterator[AsyncEngine]:
 @pytest.fixture(scope="session")
 async def sessions(engine: AsyncEngine) -> SessionFactory:
     factory = create_session_factory(engine)
-    await seed(factory)
+    await seed(factory, OWNER_PASSWORD)
     return factory
 
 

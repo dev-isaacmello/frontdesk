@@ -16,6 +16,7 @@ from frontdesk.queue.port import TriggerQueue
 from frontdesk.seed import ARENA, BARBERSHOP
 from tests.conftest import Database
 from tests.fakes import waiting_triggers
+from tests.support import RecordingSender, scripted_worker
 from tests.tools.conftest import NOW
 
 SECRET = "a-shared-secret-between-the-panel-and-the-api"
@@ -36,6 +37,7 @@ async def client(
             notifications=PostgresNotifications(database.app_dsn),
             webchat_secret=SECRET,
             clock=lambda: NOW,
+            agent=scripted_worker(sessions, RecordingSender())[0].agent,
         )
     )
     transport = httpx.ASGITransport(app=app)

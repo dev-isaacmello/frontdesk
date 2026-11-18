@@ -163,6 +163,42 @@ class Handoff(Base):
     resolved_at: Mapped[datetime | None]
 
 
+class User(Base):
+    """An owner account. Created by the seed; there is no signup."""
+
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    email: Mapped[str]
+    name: Mapped[str]
+    password_hash: Mapped[str]
+
+
+class OwnerSession(Base):
+    __tablename__ = "owner_sessions"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    user_id: Mapped[UUID]
+    token_hash: Mapped[str]
+    created_at: Mapped[datetime]
+    expires_at: Mapped[datetime]
+
+
+class TurnStep(Base):
+    """One node of the graph as it ran in a turn."""
+
+    __tablename__ = "turn_steps"
+
+    turn_id: Mapped[UUID] = mapped_column(primary_key=True)
+    seq: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID]
+    node: Mapped[str]
+    duration_ms: Mapped[int]
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
 class ApprovalRequest(Base):
     """A tool call that waits for the owner before it runs."""
 
@@ -228,6 +264,7 @@ class Turn(Base):
     outcome: Mapped[str | None]
     started_at: Mapped[datetime]
     finished_at: Mapped[datetime | None]
+    blocked_drafts: Mapped[int] = mapped_column(server_default="0")
 
 
 class Message(Base):

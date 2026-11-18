@@ -67,13 +67,21 @@ def _entra_token_provider() -> Callable[[], Awaitable[str]]:
 
 
 def api_from(settings: Settings) -> FastAPI:
+    sessions = sessions_from(settings)
     return create_app(
         ApiDeps(
-            sessions=sessions_from(settings),
+            sessions=sessions,
             queue=queue_from(settings),
             notifications=PostgresNotifications(settings.database_dsn),
             webchat_secret=settings.webchat_secret.get_secret_value(),
             clock=now,
+            # Used only to check the owner's rules when they are saved.
+            agent=AgentDeps(
+                sessions=sessions,
+                provider=provider_from(settings),
+                model=settings.model,
+                ledger=ModelLedger(sessions, load_price_table()),
+            ),
         )
     )
 

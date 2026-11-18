@@ -123,7 +123,7 @@ async def conversation_events(
                 yield ServerEvent(
                     id=str(reply.message_id),
                     event="message",
-                    data={"author": "agent", "text": reply.text},
+                    data={"author": reply.author, "text": reply.text},
                 )
             try:
                 async with asyncio.timeout(heartbeat_seconds):

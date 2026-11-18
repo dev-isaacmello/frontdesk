@@ -30,15 +30,21 @@ class _Report(BaseModel):
     findings: list[_Reported]
 
 
-async def check_rules(deps: AgentDeps, tenant_id: UUID) -> list[Finding]:
-    """Checks the version in force, stores its findings and returns them."""
+async def check_rules(
+    deps: AgentDeps, tenant_id: UUID, *, with_model: bool = True
+) -> list[Finding]:
+    """Checks the version in force, stores its findings and returns them.
+
+    Without the model, only what the code itself finds in the rules is reported.
+    """
     async with tenant_transaction(deps.sessions, tenant_id) as session:
         rules = await active_rules(session, tenant_id)
     if rules is None:
         return []
 
     findings = _by_the_words(rules.body)
-    for reported in await _by_the_model(deps, tenant_id, rules.body):
+    reported_by_model = await _by_the_model(deps, tenant_id, rules.body) if with_model else []
+    for reported in reported_by_model:
         finding = Finding(reported.clause, reported.excerpt.strip(), "model")
         # The model has to quote the owner. A finding it cannot point at is not shown.
         quoted = finding.excerpt and finding.excerpt in rules.body

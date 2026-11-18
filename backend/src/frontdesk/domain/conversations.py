@@ -19,6 +19,7 @@ from frontdesk.db.models import (
     InboundEvent,
     Message,
     Turn,
+    TurnStep,
 )
 from frontdesk.db.models import ChannelAccount as ChannelAccountRow
 from frontdesk.domain import approvals
@@ -73,6 +74,7 @@ class Receipt:
 class Reply:
     message_id: UUID
     text: str
+    author: str = "agent"
 
 
 @dataclass(frozen=True)
@@ -260,12 +262,35 @@ async def close_turn(
         )
         .on_conflict_do_nothing()
     )
+    # The timeline of a resumed turn repeats the steps it already wrote: those are kept.
+    if result.steps:
+        await session.execute(
+            insert(TurnStep)
+            .values(
+                [
+                    {
+                        "tenant_id": turn.tenant_id,
+                        "turn_id": turn.turn_id,
+                        "seq": seq,
+                        "node": step.node,
+                        "duration_ms": step.duration_ms,
+                        "detail": step.detail,
+                    }
+                    for seq, step in enumerate(result.steps)
+                ]
+            )
+            .on_conflict_do_nothing()
+        )
     if result.outcome == "awaiting_approval":
         assert result.approval is not None
         await session.execute(
             update(Turn)
             .where(Turn.id == turn.turn_id)
-            .values(status="awaiting_approval", outcome="awaiting_approval")
+            .values(
+                status="awaiting_approval",
+                outcome="awaiting_approval",
+                blocked_drafts=result.blocks,
+            )
         )
         await approvals.request(
             session, turn.tenant_id, conversation_id, turn.turn_id, result.approval, now
@@ -274,7 +299,12 @@ async def close_turn(
     await session.execute(
         update(Turn)
         .where(Turn.id == turn.turn_id)
-        .values(status="completed", outcome=result.outcome, finished_at=now)
+        .values(
+            status="completed",
+            outcome=result.outcome,
+            finished_at=now,
+            blocked_drafts=result.blocks,
+        )
     )
     if result.outcome == "handoff":
         await session.execute(
@@ -435,15 +465,17 @@ async def belongs_to(
 async def replies_after(
     session: AsyncSession, conversation_id: UUID, cursor: UUID | None
 ) -> list[Reply]:
-    """The agent's replies written after the one the cursor names, oldest first."""
+    """What was said to the customer after the message the cursor names, oldest first."""
     query = (
-        select(Message.id, Message.body)
+        select(Message.id, Message.body, Message.author)
         .where(Message.conversation_id == conversation_id, Message.direction == "out")
         .order_by(Message.id)
     )
     if cursor is not None:
         query = query.where(Message.id > cursor)
-    return [Reply(message_id, body) for message_id, body in await session.execute(query)]
+    return [
+        Reply(message_id, body, author) for message_id, body, author in await session.execute(query)
+    ]
 
 
 async def transcript(session: AsyncSession, conversation_id: UUID) -> list[TranscriptLine]:

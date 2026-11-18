@@ -1,4 +1,8 @@
-"""The HTTP application. It stores what arrives and enqueues; it never calls a model."""
+"""The HTTP application.
+
+For a customer message it stores what arrives and enqueues, and never calls a model. The
+owner's routes read and write the tenant's own data.
+"""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -6,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from frontdesk.api.deps import ApiDeps
+from frontdesk.api.owner import owner_router
 from frontdesk.api.webchat import webchat_router
 
 __all__ = ["ApiDeps", "create_app"]
@@ -25,6 +30,7 @@ def create_app(deps: ApiDeps) -> FastAPI:
         title="frontdesk", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
     )
     app.include_router(webchat_router(deps))
+    app.include_router(owner_router(deps))
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

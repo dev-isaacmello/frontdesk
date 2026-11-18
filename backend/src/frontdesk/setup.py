@@ -9,6 +9,7 @@ that connects with more than the application role:
     FRONTDESK_APP_PASSWORD             password given to the application role
     FRONTDESK_MIGRATIONS_DATABASE_URL  SQLAlchemy URL of the owner role
     FRONTDESK_DATABASE_URL             SQLAlchemy URL of the application role
+    FRONTDESK_DEMO_OWNER_PASSWORD      password of the demo owner accounts; none if unset
 """
 
 import asyncio
@@ -52,14 +53,15 @@ def main() -> None:
     )
     log.info("checkpoint_tables_ready")
 
-    asyncio.run(_seed(env["FRONTDESK_DATABASE_URL"]))
-    log.info("seed_applied")
+    owner_password = env.get("FRONTDESK_DEMO_OWNER_PASSWORD") or None
+    asyncio.run(_seed(env["FRONTDESK_DATABASE_URL"], owner_password))
+    log.info("seed_applied", extra={"owner_accounts": owner_password is not None})
 
 
-async def _seed(database_url: str) -> None:
+async def _seed(database_url: str, owner_password: str | None) -> None:
     engine = create_engine(database_url)
     try:
-        await seed(create_session_factory(engine))
+        await seed(create_session_factory(engine), owner_password)
     finally:
         await engine.dispose()
 

@@ -11,11 +11,14 @@ sending it belong to the worker, so the graph knows nothing about channels.
 """
 
 import datetime as dt
+import inspect
 import json
 import operator
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, Protocol, TypedDict
 from zoneinfo import ZoneInfo
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -29,7 +32,7 @@ from pydantic import BaseModel, ConfigDict
 from frontdesk.agent import intents, prompts
 from frontdesk.agent.review import review
 from frontdesk.agent.tool_runner import run_tool_call
-from frontdesk.agent.turn import HandoffReason, HistoryMessage, TurnInput, TurnResult
+from frontdesk.agent.turn import HandoffReason, HistoryMessage, Step, TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain import approvals
 from frontdesk.domain.approvals import PendingApproval
@@ -111,6 +114,7 @@ class _State(TypedDict, total=False):
     blocks: Annotated[int, operator.add]
     gate: Literal["allow", "wait", "deny"]
     approval: dict[str, Any]
+    steps: Annotated[list[dict[str, Any]], operator.add]
     outcome: Literal["replied", "refused", "handoff"]
     reply: str
 
@@ -137,12 +141,14 @@ async def _run(deps: AgentDeps, turn: TurnInput, graph_input: _State | Command[A
         # start, with the same idempotency keys, so nothing in between has to be kept.
         durability="exit",
     )
+    steps = tuple(Step(**step) for step in final.get("steps", []))
     waiting = final.get("__interrupt__")
     if waiting:
         return TurnResult(
             outcome="awaiting_approval",
             reply=prompts.WAIT_NOTICE,
             approval=PendingApproval(**waiting[0].value),
+            steps=steps,
         )
     await deps.checkpointer.adelete_thread(thread)
     return TurnResult(
@@ -150,6 +156,7 @@ async def _run(deps: AgentDeps, turn: TurnInput, graph_input: _State | Command[A
         reply=final["reply"],
         handoff_reason=final.get("handoff_reason") if final["outcome"] == "handoff" else None,
         blocks=final.get("blocks", 0),
+        steps=steps,
     )
 
 
@@ -404,17 +411,66 @@ def _history(turn: TurnInput) -> list[Message]:
     return [Message(role=roles[past.author], content=past.text) for past in turn.history]
 
 
+type _Node = Callable[..., Awaitable[_State]]
+
+
+class _TimedNode(Protocol):
+    async def __call__(self, state: _State, *, runtime: Runtime[AgentDeps]) -> _State: ...
+
+
+def _timed(name: str, node: _Node) -> _TimedNode:
+    """Wraps a node so that the turn records it as a step of its timeline."""
+    wants_runtime = len(inspect.signature(node).parameters) > 1
+
+    async def timed(state: _State, *, runtime: Runtime[AgentDeps]) -> _State:
+        started = time.perf_counter()
+        # An interrupt leaves through here as an exception and records nothing: the node
+        # runs again when the turn resumes, and that run is the one that counts.
+        update = await (node(state, runtime) if wants_runtime else node(state))
+        step = {
+            "node": name,
+            "duration_ms": round((time.perf_counter() - started) * 1000),
+            "detail": _detail(name, state, update),
+        }
+        return {**update, "steps": [step]}
+
+    return timed
+
+
+def _detail(name: str, state: _State, update: _State) -> dict[str, Any]:
+    """What a step of the timeline says about itself. Names and outcomes, never text."""
+    if name == "classify":
+        return {"in_scope": update.get("in_scope"), "wants_human": "handoff_reason" in update}
+    if name == "plan":
+        said = update.get("transcript", [])
+        calls = [call.name for message in said for call in message.tool_calls]
+        return {"tools": calls} if calls else {"wrote_reply": "draft" in update}
+    if name in ("gate", "await_approval"):
+        return {"decision": update.get("gate")}
+    if name == "execute":
+        return {"effects": update.get("effects", []), "results": len(update.get("transcript", []))}
+    if name == "validate":
+        return {"passed": "outcome" in update}
+    if name == "handoff":
+        return {"reason": state.get("handoff_reason")}
+    return {}
+
+
 def _build() -> StateGraph[_State, AgentDeps]:
     graph = StateGraph(_State, context_schema=AgentDeps)
-    graph.add_node("load_context", _load_context)
-    graph.add_node("classify", _classify)
-    graph.add_node("refuse", _refuse)
-    graph.add_node("handoff", _handoff)
-    graph.add_node("plan", _plan)
-    graph.add_node("gate", _gate)
-    graph.add_node("await_approval", _await_approval)
-    graph.add_node("execute", _execute)
-    graph.add_node("validate", _validate)
+    nodes: dict[str, _Node] = {
+        "load_context": _load_context,
+        "classify": _classify,
+        "refuse": _refuse,
+        "handoff": _handoff,
+        "plan": _plan,
+        "gate": _gate,
+        "await_approval": _await_approval,
+        "execute": _execute,
+        "validate": _validate,
+    }
+    for name, node in nodes.items():
+        graph.add_node(name, _timed(name, node))
     graph.add_edge(START, "load_context")
     graph.add_conditional_edges("load_context", _after_context)
     graph.add_conditional_edges("classify", _after_classify)
@@ -425,10 +481,10 @@ def _build() -> StateGraph[_State, AgentDeps]:
     )
     graph.add_conditional_edges("gate", _after_gate)
     graph.add_conditional_edges("await_approval", _after_gate)
+    graph.add_conditional_edges("execute", _after_execute)
     graph.add_conditional_edges(
         "validate", _after_validate, {"done": END, "plan": "plan", "handoff": "handoff"}
     )
-    graph.add_conditional_edges("execute", _after_execute)
     return graph
 
 
