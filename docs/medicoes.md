@@ -36,9 +36,36 @@ uv run python scripts/latency.py --messages 200 --concurrency 1
 uv run python scripts/latency.py --messages 200 --concurrency 10
 ```
 
+## Phase 1, 2026-11-17: the same pipeline with a real model
+
+What was measured. The same path and the same script as the entry above, with the worker calling `gpt-5-mini` on Azure OpenAI (deployment version 2025-08-07, Global Standard, resource in North Central US) instead of the offline model. Twenty messages, one conversation at a time, each a new customer asking "quanto custa o corte?". Tokens, model time and cost come from the `model_calls` ledger of those twenty turns.
+
+Environment. The commit after the tag `phase-1` that adds the quiet window and the handling of filtered prompts. Same laptop and stack as above, worker in Porto Alegre calling the model over the public internet. Reasoning effort `low` on both nodes. Quiet window of 1.5 s, which is part of every number below.
+
+Result.
+
+- Time to the reply: median 8.1 s, p95 10.4 s, slowest 10.4 s.
+- Of that, model calls: median 6.4 s per turn, in 3.5 calls on average (one classification, then the planner two or three times around a tool call).
+- Tokens per turn, on average: 2,648 of input, 410 of them read from the provider's cache, and 221 of output.
+- Cost per turn: 1,013 micro-USD on average, a tenth of a cent. The twenty turns cost USD 0.020.
+
+What it corrects. The estimate I made before any call was 10,700 input tokens and USD 0.0038 per turn. The measured turn uses a quarter of that input and costs about a quarter. The estimate in docs/design/cost-estimate.md now carries the measured figure, for this one question; a booking conversation uses more calls and I have not averaged one.
+
+What it says about latency. Eight seconds is slow for a chat. The pipeline around the model is about 0.15 s and the quiet window 1.5 s; the rest is three or four sequential calls to a reasoning model. Fewer calls per turn, a model that does not reason, and a shorter quiet window on channels that do not need it are the three levers, and Phase 3 measures the first two across models.
+
+What was not measured. Quality. I read the answers of five conversations by hand (docs/verificado.md has what I saw) and that is not an evaluation. Concurrency with a real model was not measured either.
+
+Reproduce. Needs an Azure OpenAI deployment and its key in `.env`, as `.env.example` shows.
+
+```
+docker compose up --build -d
+cd backend
+uv run python scripts/latency.py --messages 20 --concurrency 1
+uv run python scripts/conversation.py "quanto custa o corte?" "tem horário amanhã de manhã?"
+```
+
 ## Planned entries
 
-- Phase 1, pending: the same latency with a real model on Azure OpenAI.
 - Phase 2: block rate on adversarial cases and false block rate on benign cases, for the numeric guardrail.
 - Phase 3: eval metrics before and after one real prompt change, the cost of a full suite run, and quality, cost per conversation and latency for each model the subscription can deploy.
 - Phase 4: cost per conversation before and after routing, model and channel separately, with the quality metrics beside them; recall and precision at k for retrieval.

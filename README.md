@@ -10,7 +10,7 @@ Phase 1 of 6 is done: a vertical slice that runs on one machine.
 
 What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. The reply goes to an outbox and reaches the browser through an event stream. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
 
-What does not exist yet. WhatsApp itself, the numeric guardrail, owner rules and approval, the eval suite, retrieval, cost routing, the owner's panel, and the Azure deployment. Locally the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account. Nothing about answer quality should be read from it. The adapter for a real model, Azure OpenAI, is written and tested against canned responses; it has not answered a real conversation yet, and the evaluation that would say how well it does is Phase 3.
+What does not exist yet. WhatsApp itself, the numeric guardrail, owner rules and approval, the eval suite, retrieval, cost routing, the owner's panel, and the Azure deployment. Locally the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account. Nothing about answer quality should be read from it. With the key of an Azure OpenAI deployment in `.env` the same stack runs on `gpt-5-mini`: I have held a handful of real conversations with it and read the answers, which is a smoke test and not an evaluation. The evaluation that would say how well it does is Phase 3.
 
 ## Run it
 
@@ -52,7 +52,7 @@ Facts about third-party services that the design depends on were checked against
 
 Every number here comes from [docs/medicoes.md](docs/medicoes.md), which has the environment and the command that reproduces it.
 
-Latency of the pipeline without a model, from message sent to reply on the stream, on one laptop against the Service Bus emulator: median 144 ms and p95 549 ms with one conversation at a time; median 1.77 s and p95 2.12 s with ten at a time, at 5.7 messages per second. This is the overhead around the model, and most of it is the queue: a session per conversation costs a connection handshake on every turn. The measurement entry explains it and ADR 0001 names the faster alternative I did not take. Latency with a real model has not been measured yet.
+Latency of the pipeline without a model, from message sent to reply on the stream, on one laptop against the Service Bus emulator: median 144 ms and p95 549 ms with one conversation at a time; median 1.77 s and p95 2.12 s with ten at a time, at 5.7 messages per second. This is the overhead around the model, and most of it is the queue: a session per conversation costs a connection handshake on every turn. The measurement entry explains it and ADR 0001 names the faster alternative I did not take. With `gpt-5-mini` on Azure OpenAI answering, the same path takes a median of 8.1 s and a p95 of 10.4 s for a price question, of which 6.4 s are three or four sequential model calls and 1.5 s is the wait for the customer to finish typing. One such turn costs a tenth of a cent.
 
 ## Tests
 

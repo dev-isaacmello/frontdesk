@@ -8,7 +8,7 @@ Prices were read on 2026-11-17 from the Azure Retail Prices API, `https://prices
 
 The subscription is Azure for Students: USD 100 of credit until 2027-11-17 and no payment method attached. When the credit ends the subscription is disabled, so it cannot charge anything. The most this project can cost in real money on Azure is zero.
 
-The credit is still a budget. I keep model tokens for development and evaluation under USD 5 of it, enforced by the eval runner, which refuses to start a run whose estimate passes what is left. At the price of `gpt-5-mini` that is about 1,300 turns of the size estimated below. The infrastructure window has its own line further down.
+The credit is still a budget. I keep model tokens for development and evaluation under USD 5 of it, enforced by the eval runner, which refuses to start a run whose estimate passes what is left. At the measured cost of a simple turn on `gpt-5-mini` that is about 4,900 turns. The infrastructure window has its own line further down.
 
 WhatsApp: the test number, its five recipients and the messages it sends are free.
 
@@ -60,7 +60,9 @@ A Container Apps environment in its own virtual network is billed a standard loa
 
 `gpt-5-mini` on Global Standard: 0.25 per million input tokens, 0.025 cached, 2.00 per million output tokens.
 
-A turn is two model calls on a short conversation: classify, then plan with the tool definitions, and usually a second plan call after a tool result. My working estimate is 10,700 input tokens and 580 output tokens per turn, which is 0.0038, or about 0.4 cent. It is an estimate in two ways. I have not measured token counts on real conversations, and `gpt-5-mini` is a reasoning model whose reasoning tokens are billed as output and are not in the 580. Phase 3 replaces this with measured usage from the ledger, per model.
+Measured on 2026-11-17 over twenty turns of one simple question (docs/medicoes.md): 3.5 model calls per turn, 2,648 input tokens of which 410 came from the provider's cache, 221 output tokens, and 1,013 micro-USD, which is a tenth of a cent per turn. My estimate before any call was 10,700 input tokens and 0.0038 per turn, about four times too high. A booking conversation makes more calls per turn and I have not averaged one yet; Phase 3 does that from the ledger, per model.
+
+At the measured cost, USD 5 of credit is about 4,900 turns.
 
 For comparison at list price, `gpt-4.1-mini` is 0.40 input, 0.10 cached and 1.60 output. It does not reason, so its output count is the visible answer. Which of the two is cheaper per turn depends on how much the first one reasons, and that is a measurement, not a guess.
 
