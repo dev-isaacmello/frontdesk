@@ -31,10 +31,11 @@ def the_case(chosen: golden.GoldenSet, case_id: str) -> golden.Case:
 def test_eval_1_the_set_is_versioned_and_covers_what_the_spec_names() -> None:
     chosen = golden.load(GOLDEN)
 
-    assert chosen.version == "2026-11-18.2"
-    assert len({case.id for case in chosen.cases}) == len(chosen.cases) == 37
+    assert chosen.version == "2026-11-18.3"
+    assert len({case.id for case in chosen.cases}) == len(chosen.cases) == 41
     assert {case.category for case in chosen.cases} == {
         "tools",
+        "history",
         "arguments",
         "numbers",
         "policy",

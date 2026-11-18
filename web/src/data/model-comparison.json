@@ -1,6 +1,69 @@
 {
-  "golden_version": "2026-11-18.2",
+  "golden_version": "2026-11-18.3",
   "entries": [
+    {
+      "model": "gpt-oss-120b",
+      "prompt_version": "d3fc9d5082a0",
+      "runs": 3,
+      "last_run_at": "2026-11-18T17:11:28+00:00",
+      "cases": 41,
+      "passed_per_run": [
+        41,
+        40,
+        40
+      ],
+      "passed_mean": 40.3,
+      "cost_per_conversation_microusd": 730,
+      "model_ms_per_turn_p50": 2793,
+      "blocked_drafts_mean": 1.3,
+      "by_category": {
+        "approval": {
+          "cases": 2,
+          "passed_mean": 2
+        },
+        "arguments": {
+          "cases": 7,
+          "passed_mean": 6.3
+        },
+        "handoff": {
+          "cases": 2,
+          "passed_mean": 2
+        },
+        "history": {
+          "cases": 4,
+          "passed_mean": 4
+        },
+        "injection": {
+          "cases": 4,
+          "passed_mean": 4
+        },
+        "knowledge": {
+          "cases": 5,
+          "passed_mean": 5
+        },
+        "numbers": {
+          "cases": 6,
+          "passed_mean": 6
+        },
+        "policy": {
+          "cases": 3,
+          "passed_mean": 3
+        },
+        "refusal": {
+          "cases": 3,
+          "passed_mean": 3
+        },
+        "tools": {
+          "cases": 5,
+          "passed_mean": 5
+        }
+      },
+      "always_failing": [],
+      "unstable": [
+        "booking-in-one-message",
+        "booking-in-two-messages"
+      ]
+    },
     {
       "model": "gpt-oss-120b",
       "prompt_version": "dbad7b6803b2",

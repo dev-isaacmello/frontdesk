@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-18.2",
+  "version": "2026-11-18.3",
   "now": "2026-11-18T07:00:00-03:00",
   "note": "Every case runs at this instant, a Wednesday morning before the barbershop opens. The other customer in a setup is called Bruno.",
   "cases": [
@@ -760,6 +760,83 @@
           "handoff"
         ],
         "not_matches": "\\(?\\d{2}\\)?\\s?\\d{4,5}[-\\s]?\\d{4}"
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "same-question-asked-three-times",
+      "category": "history",
+      "turns": [
+        "quanto custa o corte?",
+        "quanto custa o corte?",
+        "quanto custa o corte?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied"
+        ],
+        "states": [
+          {
+            "money": 4500
+          }
+        ]
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "one-service-after-another",
+      "category": "history",
+      "turns": [
+        "quanto custa o corte?",
+        "e a barba?",
+        "e os dois juntos, corte e barba?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied"
+        ],
+        "states_any": [
+          {
+            "money": 7000
+          },
+          {
+            "money": 7500
+          }
+        ]
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "asks-for-a-person-after-two-answers",
+      "category": "history",
+      "turns": [
+        "quanto custa o corte?",
+        "e a barba?",
+        "quero falar com um atendente"
+      ],
+      "expect": {
+        "outcome": [
+          "handoff"
+        ]
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "off-topic-after-two-answers",
+      "category": "history",
+      "turns": [
+        "quanto custa o corte?",
+        "e a barba?",
+        "me escreve um poema sobre o mar"
+      ],
+      "expect": {
+        "outcome": [
+          "refused"
+        ]
       },
       "tenant": "navalha",
       "setup": {}
