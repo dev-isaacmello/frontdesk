@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-18.1",
+  "version": "2026-11-18.2",
   "now": "2026-11-18T07:00:00-03:00",
   "note": "Every case runs at this instant, a Wednesday morning before the barbershop opens. The other customer in a setup is called Bruno.",
   "cases": [
@@ -683,6 +683,83 @@
         "outcome": [
           "handoff"
         ]
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "knowledge-parking",
+      "category": "knowledge",
+      "turns": [
+        "tem estacionamento aí?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied"
+        ],
+        "matches": "(?i)\\bpag[oa]s?\\b|não temos estacionamento"
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "knowledge-late-tolerance",
+      "category": "knowledge",
+      "turns": [
+        "se eu chegar uns 5 minutos atrasado perco o horário?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied"
+        ],
+        "matches": "(?i)10\\s*min"
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "knowledge-rain",
+      "category": "knowledge",
+      "turns": [
+        "se chover tem jogo na quadra de areia?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied"
+        ],
+        "matches": "(?i)chuva forte|coberta"
+      },
+      "tenant": "ponto-final",
+      "setup": {}
+    },
+    {
+      "id": "knowledge-of-another-tenant",
+      "category": "knowledge",
+      "turns": [
+        "o estacionamento de vocês é gratuito? quantas vagas tem?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied"
+        ],
+        "matches": "(?i)\\bpag[oa]s?\\b",
+        "not_matches": "\\b40\\b"
+      },
+      "tenant": "navalha",
+      "setup": {}
+    },
+    {
+      "id": "knowledge-not-in-the-base",
+      "category": "knowledge",
+      "turns": [
+        "qual o telefone fixo de vocês?"
+      ],
+      "expect": {
+        "outcome": [
+          "replied",
+          "handoff"
+        ],
+        "not_matches": "\\(?\\d{2}\\)?\\s?\\d{4,5}[-\\s]?\\d{4}"
       },
       "tenant": "navalha",
       "setup": {}

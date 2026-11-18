@@ -14,9 +14,9 @@ _MARGIN = 1.5
 
 
 def spent(runs: Path) -> int:
-    """Micro-USD spent by every run recorded in the directory."""
+    """Micro-USD spent by every run recorded in the directory and the ones below it."""
     return sum(
-        json.loads(path.read_text())["totals"]["cost_microusd"] for path in runs.glob("*.json")
+        json.loads(path.read_text())["totals"]["cost_microusd"] for path in runs.rglob("*.json")
     )
 
 

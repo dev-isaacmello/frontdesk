@@ -8,6 +8,7 @@ against the database. Nothing here asks a model whether a model did well.
 
 import datetime as dt
 import json
+import logging
 import re
 import statistics
 from collections.abc import Awaitable, Callable
@@ -32,6 +33,8 @@ from frontdesk.tools.context import ToolContext
 from frontdesk.worker.handler import WorkerDeps, handle
 
 OTHER_CUSTOMER = "Bruno"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,7 @@ async def run_case(env: Environment, case: Case, now: dt.datetime) -> CaseResult
         failures = await _failures(env, case, sender, turns, now)
     except Exception as error:
         # A case that cannot run is a failed case, with the reason, not a crashed suite.
+        log.exception("case_could_not_run", extra={"case": case.id})
         return CaseResult(case.id, case.category, False, [f"error: {type(error).__name__}"])
     return CaseResult(case.id, case.category, not failures, failures, turns)
 

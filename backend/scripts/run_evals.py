@@ -21,43 +21,28 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
-from alembic import command
-from alembic.config import Config
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from testcontainers.community.postgres import PostgresContainer
+from sandbox import Sandbox, sandbox
 
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps
-from frontdesk.db.bootstrap import APP_ROLE, OWNER_ROLE, BootstrapPlan, bootstrap
-from frontdesk.db.session import SessionFactory, create_engine, create_session_factory
+from frontdesk.agent.router import Routes
 from frontdesk.evals import budget, golden
+from frontdesk.providers.embeddings import Embedder
 from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.port import ModelProvider
 from frontdesk.providers.prices import load_price_table
-from frontdesk.seed import seed
-from frontdesk.wiring import azure_openai_provider
+from frontdesk.wiring import azure_openai_embedder, azure_openai_provider, model_access_from_env
 from frontdesk.worker.handler import WorkerDeps
 
 BACKEND = Path(__file__).resolve().parents[1]
 REPO = BACKEND.parent
 RUNS = REPO / "evals" / "runs"
-PLAN = BootstrapPlan(database="frontdesk", owner_password="owner", app_password="app")  # noqa: S106
 RETRIES_WHEN_INTERRUPTED = 2
 WRITTEN_BY_A_CASE = (
     "owner_sessions, turn_steps, approval_requests, rule_findings, house_rules, handoffs, "
     "model_calls, messages, turns, inbound_events, conversations, bookings, schedule_blocks, "
     "customer_identities, customers"
 )
-
-
-class ModelAccess(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="FRONTDESK_", env_file=REPO / ".env", extra="ignore", env_parse_none_str=""
-    )
-
-    azure_openai_endpoint: str
-    azure_openai_api_key: SecretStr | None = None
 
 
 class SilentSender:
@@ -85,24 +70,23 @@ def commit() -> str | None:
     return done.stdout.strip() or None
 
 
-def migrate(owner_url: str) -> None:
-    config = Config(BACKEND / "alembic.ini")
-    config.set_main_option("sqlalchemy.url", owner_url)
-    command.upgrade(config, "head")
-
-
 async def run_model(
-    sessions: SessionFactory,
-    superuser_dsn: str,
+    box: Sandbox,
     provider: ModelProvider,
     model: str,
     chosen: golden.GoldenSet,
+    *,
+    embedder: Embedder | None,
+    classify_model: str | None,
 ) -> dict[str, Any]:
+    sessions = box.sessions
     agent = AgentDeps(
         sessions=sessions,
         provider=provider,
         model=model,
         ledger=ModelLedger(sessions, load_price_table()),
+        embedder=embedder,
+        routes=Routes(default=model, classify=classify_model),
     )
 
     def worker(now: dt.datetime) -> WorkerDeps:
@@ -112,7 +96,7 @@ async def run_model(
 
     async def reset() -> None:
         async with await psycopg.AsyncConnection.connect(
-            superuser_dsn, dbname=PLAN.database, autocommit=True
+            box.superuser_dsn, dbname=box.database, autocommit=True
         ) as connection:
             await connection.execute(f"truncate {WRITTEN_BY_A_CASE} cascade")
 
@@ -131,6 +115,9 @@ async def run_model(
     return {
         "golden_version": chosen.version,
         "model": model,
+        # What differs from every call going to `model` with no retrieval.
+        "classify_model": classify_model,
+        "embedding_model": embedder.model if embedder else None,
         "provider": provider.name,
         "prompt_version": prompt_version(),
         "price_table_version": load_price_table().version,
@@ -146,6 +133,13 @@ async def main() -> int:
     parser.add_argument("--model", action="append", required=True, help="deployment to run")
     parser.add_argument("--cases", type=Path, default=REPO / "evals" / "golden" / "cases.json")
     parser.add_argument("--only", help="run only the cases of this category")
+    parser.add_argument("--case", action="append", help="run only the case with this id")
+    parser.add_argument(
+        "--embedding-model",
+        default="text-embedding-3-small",
+        help='deployment the knowledge base is embedded with; "none" runs without retrieval',
+    )
+    parser.add_argument("--classify-model", help="a deployment for the classifier alone")
     parser.add_argument("--cap-usd", type=float, default=5.0, help="total the runs may cost")
     parser.add_argument("--no-save", action="store_true", help="do not write result files")
     parser.add_argument(
@@ -159,6 +153,9 @@ async def main() -> int:
     if arguments.only:
         cases = [case for case in chosen.cases if case.category == arguments.only]
         chosen = golden.GoldenSet(chosen.version, chosen.now, cases)
+    if arguments.case:
+        cases = [case for case in chosen.cases if case.id in arguments.case]
+        chosen = golden.GoldenSet(chosen.version, chosen.now, cases)
     turns = sum(len(case.turns) for case in chosen.cases)
     cap = round(arguments.cap_usd * 1_000_000)
     fits, spent, expected = budget.allows(RUNS, arguments.model, turns, cap)
@@ -167,45 +164,45 @@ async def main() -> int:
         print("refused: the estimate of this run passes what is left of the budget")
         return 2
 
-    access = ModelAccess()
-    provider = azure_openai_provider(access.azure_openai_endpoint, access.azure_openai_api_key)
+    endpoint, key = model_access_from_env(REPO / ".env")
+    provider = azure_openai_provider(endpoint, key)
+    embedder = (
+        None
+        if arguments.embedding_model == "none"
+        else azure_openai_embedder(endpoint, key, arguments.embedding_model)
+    )
+    routed = arguments.classify_model is not None
     # A database that lives for this run only, on this machine.
-    with PostgresContainer(
-        "pgvector/pgvector:pg18",
-        username="postgres",
-        password="postgres",  # noqa: S106  not a secret: the container dies with the run
-    ) as db:
-        host, port = db.get_container_host_ip(), int(db.get_exposed_port(5432))
-        superuser_dsn = f"postgresql://postgres:postgres@{host}:{port}/postgres"
-        bootstrap(superuser_dsn, PLAN)
-        migrate(
-            f"postgresql+psycopg://{OWNER_ROLE}:{PLAN.owner_password}@{host}:{port}/{PLAN.database}"
-        )
-        engine = create_engine(
-            f"postgresql+psycopg://{APP_ROLE}:{PLAN.app_password}@{host}:{port}/{PLAN.database}"
-        )
-        sessions = create_session_factory(engine)
-        await seed(sessions)
-        try:
-            for model in arguments.model:
-                print(f"{model}: {len(chosen.cases)} cases")
-                run = await run_model(sessions, superuser_dsn, provider, model, chosen)
-                totals = run["totals"]
-                print(
-                    f"  {totals['passed']}/{totals['cases']} passed, "
-                    f"{totals['cost_microusd']} micro-USD, "
-                    f"median model time per turn {totals['model_ms_per_turn_p50']} ms"
-                )
-                if arguments.out:
-                    arguments.out.write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
-                    print(f"  written to {arguments.out}")
-                elif not arguments.no_save:
-                    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-                    path = RUNS / f"{stamp}-{model}.json"
-                    path.write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
-                    print(f"  written to {path.relative_to(REPO)}")
-        finally:
-            await engine.dispose()
+    async with sandbox(embedder) as box:
+        for model in arguments.model:
+            print(f"{model}: {len(chosen.cases)} cases")
+            run = await run_model(
+                box,
+                provider,
+                model,
+                chosen,
+                embedder=embedder,
+                classify_model=arguments.classify_model,
+            )
+            totals = run["totals"]
+            print(
+                f"  {totals['passed']}/{totals['cases']} passed, "
+                f"{totals['cost_microusd']} micro-USD, "
+                f"median model time per turn {totals['model_ms_per_turn_p50']} ms"
+            )
+            if arguments.out:
+                arguments.out.write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
+                print(f"  written to {arguments.out}")
+            elif not arguments.no_save:
+                stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+                # A routed run is kept apart: the comparison of models reads only runs in
+                # which one model answered everything.
+                folder = RUNS / "routing" if routed else RUNS
+                folder.mkdir(exist_ok=True)
+                name = f"{model}-classify-{arguments.classify_model}" if routed else model
+                path = folder / f"{stamp}-{name}.json"
+                path.write_text(json.dumps(run, ensure_ascii=False, indent=2) + "\n")
+                print(f"  written to {path.relative_to(REPO)}")
     return 0
 
 
