@@ -299,3 +299,33 @@ async def test_ing_8_the_first_message_to_a_customer_is_not_delayed(
     await sender_with(sessions, graph, slept).send(await outbound(sessions))
 
     assert slept.seconds == []
+
+
+@pytest.mark.parametrize(
+    ("as_whatsapp_names_it", "as_it_is_dialled"),
+    [
+        # A mobile outside São Paulo, Rio and Espírito Santo: WhatsApp's id has eight digits
+        # after the area code, and the number as dialled has nine.
+        ("555188887777", "5551988887777"),
+        # Already nine digits, a landline, and a number of another country: as they came.
+        ("5511988887777", "5511988887777"),
+        ("555133334444", "555133334444"),
+        ("14155550123", "14155550123"),
+    ],
+)
+async def test_ing_8_a_brazilian_mobile_is_addressed_with_its_ninth_digit(
+    sessions: SessionFactory, as_whatsapp_names_it: str, as_it_is_dialled: str
+) -> None:
+    """The first real reply was refused: the recipient was "not in allowed list".
+
+    The customer's number arrives as WhatsApp's id for it, without the ninth digit, and the
+    Graph API matched the number literally against the list of a test number. Addressed as
+    dialled, the same message was accepted, and its answer named the shorter id.
+    """
+    graph = Graph(httpx.Response(200, json=ACCEPTED))
+
+    await sender_with(sessions, graph, Slept()).send(
+        await outbound(sessions, phone=as_whatsapp_names_it)
+    )
+
+    assert json.loads(graph.requests[0].content)["to"] == as_it_is_dialled

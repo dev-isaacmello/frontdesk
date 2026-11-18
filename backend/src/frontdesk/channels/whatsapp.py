@@ -7,6 +7,7 @@ their sources in docs/verificado.md.
 import hashlib
 import hmac
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -180,6 +181,21 @@ def _instant(value: Any) -> datetime | None:
         return None
 
 
+_BRAZILIAN_MOBILE_WITHOUT_ITS_NINTH_DIGIT = re.compile(r"55(\d{2})([6-9]\d{7})")
+
+
+def _as_dialled(phone: str) -> str:
+    """The number to address a reply to, from the number a message came from.
+
+    WhatsApp names a Brazilian mobile outside area codes 11 to 28 by an id without the
+    ninth digit, and that is what a webhook carries. The Graph API accepts the number as
+    dialled and maps it to the id by itself; given the id, it refused a recipient who was
+    on the allowed list of a test number under the dialled form.
+    """
+    short = _BRAZILIAN_MOBILE_WITHOUT_ITS_NINTH_DIGIT.fullmatch(phone)
+    return f"55{short[1]}9{short[2]}" if short else phone
+
+
 class WhatsAppSender:
     """Sends a text through the Graph API, no sooner than Meta accepts for one customer."""
 
@@ -209,7 +225,7 @@ class WhatsAppSender:
             "text": {"preview_url": False, "body": message.text},
         }
         if message.recipient_phone:
-            body["to"] = message.recipient_phone
+            body["to"] = _as_dialled(message.recipient_phone)
         else:
             body["recipient"] = message.recipient_external_id
         try:
