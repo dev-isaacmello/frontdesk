@@ -38,8 +38,12 @@ async def say(
     session_id: str,
     text: str,
     after: str | None,
-) -> tuple[str, str, float]:
-    """Sends one message. Returns the reply, its event id and the seconds it took."""
+    patience: float,
+) -> tuple[str | None, str, float]:
+    """Sends one message. Returns the reply, its event id and the seconds it took.
+
+    The reply is None when nothing came within `patience` seconds.
+    """
     path = f"/channels/webchat/{tenant}/messages"
     body = json.dumps({"session_id": session_id, "message_id": uuid4().hex, "text": text}).encode()
 
@@ -52,26 +56,40 @@ async def say(
     events += f"?session_id={session_id}" + (f"&after={after}" if after else "")
     event_id = ""
     is_message = False
-    async with client.stream("GET", events, headers=signed(secret, "GET", events)) as stream:
-        stream.raise_for_status()
-        async for line in stream.aiter_lines():
-            if line.startswith("id: "):
-                event_id = line.removeprefix("id: ")
-            elif line.startswith("event: "):
-                is_message = line == "event: message"
-            elif line.startswith("data: ") and is_message:
-                reply = json.loads(line.removeprefix("data: "))["text"]
-                return reply, event_id, time.perf_counter() - started
+    try:
+        async with (
+            asyncio.timeout(patience),
+            client.stream("GET", events, headers=signed(secret, "GET", events)) as stream,
+        ):
+            stream.raise_for_status()
+            async for line in stream.aiter_lines():
+                if line.startswith("id: "):
+                    event_id = line.removeprefix("id: ")
+                elif line.startswith("event: "):
+                    is_message = line == "event: message"
+                elif line.startswith("data: ") and is_message:
+                    reply = json.loads(line.removeprefix("data: "))["text"]
+                    return reply, event_id, time.perf_counter() - started
+    except TimeoutError:
+        # Silence is an answer too: in handoff the agent says nothing.
+        return None, after or "", time.perf_counter() - started
     raise RuntimeError("the stream closed before the reply")
 
 
-async def converse(base_url: str, secret: str, tenant: str, messages: list[str]) -> None:
+async def converse(
+    base_url: str, secret: str, tenant: str, messages: list[str], patience: float
+) -> None:
     session_id = uuid4().hex
     after: str | None = None
-    async with httpx.AsyncClient(base_url=base_url, timeout=180) as client:
+    # No read timeout: the event stream is silent until the reply. `patience` bounds it.
+    timeout = httpx.Timeout(30, read=None)
+    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
         for text in messages:
-            reply, after, seconds = await say(client, secret, tenant, session_id, text, after)
-            print(f"> {text}\n< {reply}\n  ({seconds:.1f} s)\n")
+            reply, after, seconds = await say(
+                client, secret, tenant, session_id, text, after or None, patience
+            )
+            said = reply if reply is not None else "(no reply)"
+            print(f"> {text}\n< {said}\n  ({seconds:.1f} s)\n")
 
 
 def main() -> None:
@@ -79,9 +97,14 @@ def main() -> None:
     parser.add_argument("messages", nargs="+", help="what the customer says, in order")
     parser.add_argument("--base-url", default="http://127.0.0.1:8700")
     parser.add_argument("--tenant", default="navalha")
+    parser.add_argument("--patience", type=float, default=90, help="seconds to wait for a reply")
     arguments = parser.parse_args()
     secret = os.environ.get("FRONTDESK_WEBCHAT_SECRET", DEFAULT_SECRET)
-    asyncio.run(converse(arguments.base_url, secret, arguments.tenant, arguments.messages))
+    asyncio.run(
+        converse(
+            arguments.base_url, secret, arguments.tenant, arguments.messages, arguments.patience
+        )
+    )
 
 
 if __name__ == "__main__":

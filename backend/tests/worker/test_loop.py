@@ -14,7 +14,12 @@ from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.conversations import open_turn
 from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.offline import OfflineProvider
-from frontdesk.providers.port import ModelProvider, ModelRequest, ModelResponse
+from frontdesk.providers.port import (
+    ModelProvider,
+    ModelRejectedError,
+    ModelRequest,
+    ModelResponse,
+)
 from frontdesk.providers.prices import load_price_table
 from frontdesk.queue.port import Delivery, TriggerQueue
 from frontdesk.queue.triggers import Trigger
@@ -131,6 +136,24 @@ async def test_ing_6_a_turn_that_fails_every_attempt_goes_to_a_person(
     assert conversation["mode"] == "handoff"
     assert len(queue.set_aside) == 1
     assert await process_next(broken, queue, wait_seconds=0, pause=no_pause) == 0
+
+
+async def test_ing_6_a_request_the_provider_rejects_is_not_retried(
+    sessions: SessionFactory, queue: InMemoryTriggerQueue
+) -> None:
+    class Rejecting:
+        name = "rejecting"
+
+        async def complete(self, _request: ModelRequest) -> ModelResponse:
+            raise ModelRejectedError("the request is malformed and will be every time")
+
+    sender = RecordingSender()
+    rejecting = worker(sessions, sender, Rejecting())
+    await enqueue(sessions, queue, "quanto custa o corte?", "Ana")
+
+    await process_next(rejecting, queue, wait_seconds=0, pause=no_pause)
+
+    assert [message.text for message in sender.sent] == [HANDOFF_NOTICE]
 
 
 async def test_ing_6_before_the_last_attempt_the_customer_hears_nothing(

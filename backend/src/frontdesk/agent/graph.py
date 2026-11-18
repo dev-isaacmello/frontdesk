@@ -23,7 +23,13 @@ from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.clock import to_local
 from frontdesk.domain.tenants import load_tenant, timezone_of
 from frontdesk.providers.ledger import ModelLedger
-from frontdesk.providers.port import Message, ModelProvider, ModelRequest, ModelResponse
+from frontdesk.providers.port import (
+    Message,
+    ModelFilteredError,
+    ModelProvider,
+    ModelRequest,
+    ModelResponse,
+)
 from frontdesk.tools.registry import TOOL_SPECS
 
 __all__ = ["AgentDeps", "HistoryMessage", "TurnInput", "TurnLimits", "TurnResult", "run_turn"]
@@ -120,7 +126,15 @@ async def _call_model(
 
 
 async def _classify(state: _State, runtime: Runtime[AgentDeps]) -> _State:
-    deps = runtime.context
+    try:
+        return await _classification(state, runtime.context)
+    except ModelFilteredError:
+        # The provider would not let a model read the message, which is what it does with
+        # a jailbreak attempt. Nothing in it is acted on: it gets the fixed refusal.
+        return {"in_scope": False, "model_calls": 1}
+
+
+async def _classification(state: _State, deps: AgentDeps) -> _State:
     response = await _call_model(
         deps,
         state["turn"],
@@ -153,20 +167,21 @@ async def _refuse(state: _State) -> _State:
 
 async def _plan(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     deps = runtime.context
-    response = await _call_model(
-        deps,
-        state["turn"],
-        "plan",
-        ModelRequest(
-            model=deps.model,
-            system=state["plan_system"],
-            messages=tuple(state["transcript"]),
-            tools=TOOL_SPECS,
-            max_output_tokens=2048,
-            reasoning_effort="low",
-            timeout_s=45,
-        ),
+    request = ModelRequest(
+        model=deps.model,
+        system=state["plan_system"],
+        messages=tuple(state["transcript"]),
+        tools=TOOL_SPECS,
+        max_output_tokens=2048,
+        reasoning_effort="low",
+        timeout_s=45,
     )
+    try:
+        response = await _call_model(deps, state["turn"], "plan", request)
+    except ModelFilteredError:
+        return {**(await _refuse(state)), "model_calls": 1}
+    if response.stop_reason == "filtered":
+        return {**(await _refuse(state)), **_spent(response)}
     said = Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
     if response.tool_calls:
         return {"transcript": [said], **_spent(response)}
@@ -215,6 +230,8 @@ def _after_execute(state: _State) -> Literal["plan", "handoff"]:
 
 
 def _after_plan(state: _State) -> Literal["execute", "done"]:
+    if "outcome" in state:
+        return "done"
     return "execute" if state["transcript"][-1].tool_calls else "done"
 
 

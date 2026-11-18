@@ -15,6 +15,7 @@ from openai.types.chat import ChatCompletion, ChatCompletionMessageToolCall
 
 from frontdesk.providers.port import (
     Message,
+    ModelFilteredError,
     ModelRejectedError,
     ModelRequest,
     ModelResponse,
@@ -26,6 +27,10 @@ from frontdesk.providers.port import (
 )
 
 type StopReason = Literal["end", "tool_use", "max_tokens", "refused", "filtered"]
+
+# The error code of a prompt stopped by the content filter, sent with HTTP 400. A jailbreak
+# attempt in a customer message is answered this way.
+_FILTERED = "content_filter"
 
 _STOP_REASONS: dict[str, StopReason] = {
     "stop": "end",
@@ -54,6 +59,8 @@ class AzureOpenAIProvider:
         except (openai.APIConnectionError, openai.InternalServerError) as error:
             raise ModelUnavailableError(str(error)) from error
         except openai.APIStatusError as error:
+            if error.code == _FILTERED:
+                raise ModelFilteredError(str(error)) from error
             raise ModelRejectedError(str(error)) from error
         return _response(request, completion, time.perf_counter() - started)
 

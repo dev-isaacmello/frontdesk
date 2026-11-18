@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 from frontdesk.providers.azure_openai import AzureOpenAIProvider
 from frontdesk.providers.port import (
     Message,
+    ModelFilteredError,
     ModelRejectedError,
     ModelRequest,
     ModelThrottledError,
@@ -251,6 +252,33 @@ async def test_http_failures_map_to_the_port_errors(status: int, expected: type[
 
     with pytest.raises(expected):
         await provider(failing).complete(request())
+
+
+async def test_a_prompt_stopped_by_the_content_filter_is_its_own_error() -> None:
+    """What Azure answers to a jailbreak attempt, as observed on 2026-11-17."""
+    filtered = Recorder(
+        status=400,
+        body={
+            "error": {
+                "code": "content_filter",
+                "param": "prompt",
+                "message": "The response was filtered due to the prompt triggering the policy.",
+                "innererror": {"code": "ResponsibleAIPolicyViolation"},
+            }
+        },
+    )
+
+    with pytest.raises(ModelFilteredError):
+        await provider(filtered).complete(request())
+
+
+async def test_another_bad_request_is_not_taken_for_the_content_filter() -> None:
+    rejected = Recorder(status=400, body={"error": {"code": "invalid_request", "message": "x"}})
+
+    with pytest.raises(ModelRejectedError) as failure:
+        await provider(rejected).complete(request())
+
+    assert not isinstance(failure.value, ModelFilteredError)
 
 
 async def test_a_timeout_and_a_dropped_connection_map_to_the_port_errors() -> None:

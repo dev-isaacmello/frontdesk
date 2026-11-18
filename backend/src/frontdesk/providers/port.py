@@ -77,6 +77,10 @@ class ModelRejectedError(ModelError):
     """The provider refused this request as it is. Retrying the same request will not help."""
 
 
+class ModelFilteredError(ModelRejectedError):
+    """The provider's content filter stopped the request before any model read it."""
+
+
 class ModelProvider(Protocol):
     @property
     def name(self) -> str: ...

@@ -7,6 +7,7 @@ from contextlib import suppress
 
 from frontdesk import logs
 from frontdesk.domain.conversations import ConversationBusyError
+from frontdesk.providers.port import ModelRejectedError
 from frontdesk.queue.port import Lease, TriggerQueue
 from frontdesk.queue.triggers import Trigger
 from frontdesk.worker.handler import WorkerDeps, give_up, handle
@@ -118,7 +119,8 @@ async def handle_conversation(
                     **logs.failure(error),
                 },
             )
-            if delivery.attempt >= MAX_ATTEMPTS:
+            # A request the provider rejects as it is will be rejected again: no retry.
+            if delivery.attempt >= MAX_ATTEMPTS or isinstance(error, ModelRejectedError):
                 await _give_up(deps, trigger)
             else:
                 # The conversation stays leased during the pause, so nothing of it runs

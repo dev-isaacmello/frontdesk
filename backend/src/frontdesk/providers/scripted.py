@@ -17,15 +17,19 @@ class ScriptExhaustedError(AssertionError):
 class ScriptedProvider:
     name = "scripted"
 
-    def __init__(self, script: Iterable[ModelResponse]) -> None:
+    def __init__(self, script: Iterable[ModelResponse | Exception]) -> None:
         self._script = list(script)
         self.requests: list[ModelRequest] = []
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
+        """Answers with the next item of the script, raising it when it is an error."""
         self.requests.append(request)
         if not self._script:
             raise ScriptExhaustedError(f"no scripted answer for model call {len(self.requests)}")
-        return self._script.pop(0)
+        answer = self._script.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 def says(text: str) -> ModelResponse:
