@@ -6,11 +6,11 @@ This is a portfolio project. The two businesses in it are fictional. I am buildi
 
 ## Status
 
-Phase 1 of 6 is done: a vertical slice that runs on one machine.
+Phase 2 of 6 is done: the agent runs on one machine with the controls that make its answers safe to send.
 
-What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. The reply goes to an outbox and reaches the browser through an event stream. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
+What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. Before a reply is sent, code checks it: every amount, time, date, duration and count has to come from a tool of that turn, the opening hours or the customer's own words; no discount is offered; no booking is announced that a tool did not make. A draft that fails goes back to the planner once, and a second failure hands the conversation to a person. Cancelling or moving a booking on short notice waits for the owner: the turn pauses, the customer is told, and the decision resumes it, in whichever worker receives it. The owner has a panel with the conversations, how each reply was made step by step, the approval queue, and an editor for house rules that says which rules contradict the fixed policy and will have no effect. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
 
-What does not exist yet. WhatsApp itself, the numeric guardrail, owner rules and approval, the eval suite, retrieval, cost routing, the owner's panel, and the Azure deployment. Locally the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account. Nothing about answer quality should be read from it. With the key of an Azure OpenAI deployment in `.env` the same stack runs on `gpt-5-mini`: I have held a handful of real conversations with it and read the answers, which is a smoke test and not an evaluation. The evaluation that would say how well it does is Phase 3.
+What does not exist yet. WhatsApp itself, the eval suite, retrieval, cost routing, and the Azure deployment. Locally the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account. Nothing about answer quality should be read from it. With the key of an Azure OpenAI deployment in `.env` the same stack runs on a real model: I have held real conversations with three models and read the answers, which is a smoke test and not an evaluation. The evaluation that would say how well each does is Phase 3.
 
 ## Run it
 
@@ -21,6 +21,8 @@ docker compose up --build
 Then open http://localhost:3700 and talk to one of the two businesses. Docker is the only requirement. The first run downloads about 3 GB of images, most of it the SQL Server that Microsoft's Service Bus emulator needs, and the stack uses about 1.7 GB of memory.
 
 To talk to a real model instead of the offline one, put the endpoint and key of an Azure OpenAI deployment in `.env`, as `.env.example` shows, and start it again.
+
+The owner's panel is at http://localhost:3700/painel. The two demo owners are `dono@navalha.example` and `dono@ponto-final.example`, and their password is the value of `FRONTDESK_DEMO_OWNER_PASSWORD`, whose local default is in `compose.yaml`. An approval only appears when a customer asks to cancel or move a booking of the barbershop that starts within three hours.
 
 ## Architecture
 
@@ -36,15 +38,18 @@ flowchart TD
     turn --> model[Model provider port]
     tools --> pg
     worker -- reply to outbox --> pg
+    turn --> checks[Reply checks: numbers, discounts, claimed actions]
+    turn -. pause for approval .-> pg
     pg -. notify .-> api
     api -. event stream .-> panel
+    panel -- owner routes --> api
 ```
 
 The decisions behind this, each with the alternatives I rejected and what the choice costs, are in [docs/adr](docs/adr). Three I would read first:
 
 - [0001](docs/adr/0001-postgres-inbox-and-session-queue-as-trigger.md): PostgreSQL is the inbox and the queue only carries a trigger, because a lock on a queue is not exclusivity. It also says what a session per conversation costs in latency.
 - [0004](docs/adr/0004-row-level-security-with-transaction-scoped-tenant.md): tenant isolation by row-level security with a setting that lives for one transaction.
-- [0006](docs/adr/0006-deterministic-numeric-guardrail.md): the numeric guardrail as deterministic code, planned for Phase 2.
+- [0006](docs/adr/0006-deterministic-numeric-guardrail.md): the numeric guardrail as deterministic code, with what it blocked and what it missed when measured.
 
 Facts about third-party services that the design depends on were checked against their documentation and recorded with links and dates in [docs/verificado.md](docs/verificado.md), including what the documentation did not settle.
 
@@ -54,13 +59,15 @@ Every number here comes from [docs/medicoes.md](docs/medicoes.md), which has the
 
 Latency of the pipeline without a model, from message sent to reply on the stream, on one laptop against the Service Bus emulator: median 144 ms and p95 549 ms with one conversation at a time; median 1.77 s and p95 2.12 s with ten at a time, at 5.7 messages per second. This is the overhead around the model, and most of it is the queue: a session per conversation costs a connection handshake on every turn. The measurement entry explains it and ADR 0001 names the faster alternative I did not take. With `gpt-5-mini` on Azure OpenAI answering, the same path takes a median of 8.1 s and a p95 of 10.4 s for a price question, of which 6.4 s are three or four sequential model calls and 1.5 s is the wait for the customer to finish typing. One such turn costs a tenth of a cent.
 
+The reply checks, on a labelled set of 86 replies: 40 of 46 adversarial replies blocked (87.0%) and 2 of 40 benign replies blocked (5.0%). Half of the misses are a right value next to the wrong thing, which the check cannot see by design; the other half are a weakness of mine that the entry describes.
+
 ## Tests
 
 ```
 make check
 ```
 
-The backend tests run against a real PostgreSQL in a container. The queue has one contract suite that runs against Azure Service Bus in Microsoft's emulator and against the in-memory queue the other tests use, so the stand-in cannot drift from the real thing. The other test doubles are at the external edges: the model provider and the channel. Tests cite the requirement they prove by its id in the specification, for example `TEN-2` for tenant isolation and `BOOK-3` for the constraint against double booking.
+The backend has about 500 tests and they run against a real PostgreSQL in a container, including the checkpointer that keeps a turn paused for approval. The queue has one contract suite that runs against Azure Service Bus in Microsoft's emulator and against the in-memory queue the other tests use, so the stand-in cannot drift from the real thing. The other test doubles are at the external edges: the model provider and the channel. Tests cite the requirement they prove by its id in the specification, for example `TEN-2` for tenant isolation and `BOOK-3` for the constraint against double booking.
 
 ## What I chose not to build and why
 
