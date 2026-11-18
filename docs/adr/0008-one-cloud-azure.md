@@ -40,3 +40,7 @@ The provider comparison the project promised is, for now, between models of one 
 Customer messages, names and phone numbers are processed and stored outside Brazil. The seed data is fictional, so nothing real is transferred, but a real deployment for Brazilian businesses would have to document this as an international transfer under LGPD.
 
 A student subscription has limits I could not read in the documentation: allowed regions, vCPU quota, and whether model quota can ever grow. The documentation says free-tier subscriptions are not eligible for quota increases and does not say which tier a student subscription is. If Phase 5 finds a wall, the deployment moves to a pay-as-you-go subscription unchanged, since nothing in the Terraform depends on the offer.
+
+## After the comparison of Phase 3
+
+The golden set ran three times on each model that can do the job (docs/medicoes.md). `gpt-oss-120b` passed as many cases as `gpt-5-mini` at less than half the cost and a third of the model time, so it replaces `gpt-5-mini` as the model I would deploy, and the gate in CI runs on it. Three other models that have quota deploy and cannot call tools the way the agent needs; the rest are sold through Marketplace, which a student subscription cannot buy. The comparison is across models of one platform, as this record said it would be.

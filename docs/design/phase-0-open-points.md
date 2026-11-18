@@ -76,12 +76,18 @@ The owner's rules are checked when they are saved, in the same request, within a
 
 There is one pending approval per conversation and a pending request holds no slot: the approved call is validated again when it runs.
 
+## Decided in Phase 3
+
+The comparison ran on the three models of the subscription that can call tools, three times each, and `gpt-oss-120b` is the default the numbers support. The models left out are listed with the answer each gave (evals/models.json).
+
+The gate fails on cases and not on a rate, against a baseline of three runs in which a case passes only if all three passed it, and tolerates one such case lost.
+
+No model judges a model. Every expectation in the golden set is checked by code.
+
 ## Decisions still open
 
 These were taken with the default below so that work could continue. Each can be reversed at the cost stated.
 
 2. Who the MCP server is for. Default: stdio and Streamable HTTP, run locally and in tests, not exposed in the Azure deployment. The SDK's HTTP authorization model is an OAuth resource server, which needs an authorization server I do not want to add.
-
-3. Which models enter the comparison. The subscription has quota for `gpt-5-mini`, `gpt-4.1-mini`, `o4-mini`, `gpt-oss-120b`, two Llama models, five Phi-4 variants, three Mistral models and Codestral. Default: every one of them that can be deployed and accepts tool calling runs the golden set, and the panel shows quality, cost per conversation and latency side by side. Models that cannot call tools are listed as excluded with the reason. A model from a second vendor through its own API is an option that needs a paid key.
 
 5. Trace backend: Phoenix self-hosted as proposed in ADR 0011, or a managed one.

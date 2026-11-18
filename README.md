@@ -6,11 +6,13 @@ This is a portfolio project. The two businesses in it are fictional. I am buildi
 
 ## Status
 
-Phase 2 of 6 is done: the agent runs on one machine with the controls that make its answers safe to send.
+Phase 3 of 6 is done: the agent runs on one machine with the controls that make its answers safe to send, and with an evaluation that says how well it does and stops a pull request that makes it worse.
 
-What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. Before a reply is sent, code checks it: every amount, time, date, duration and count has to come from a tool of that turn, the opening hours or the customer's own words; no discount is offered; no booking is announced that a tool did not make. A draft that fails goes back to the planner once, and a second failure hands the conversation to a person. Cancelling or moving a booking on short notice waits for the owner: the turn pauses, the customer is told, and the decision resumes it, in whichever worker receives it. The owner has a panel with the conversations, how each reply was made step by step, the approval queue, and an editor for house rules that says which rules contradict the fixed policy and will have no effect. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
+What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. Before a reply is sent, code checks it: every amount, time, date, duration and count has to come from a tool of that turn, the opening hours or the customer's own words; no discount is offered; no booking is announced that a tool did not make. A draft that fails goes back to the planner once, and a second failure hands the conversation to a person. Cancelling or moving a booking on short notice waits for the owner: the turn pauses, the customer is told, and the decision resumes it, in whichever worker receives it. The owner has a panel with the conversations, how each reply was made step by step, the approval queue, an editor for house rules that says which rules contradict the fixed policy, and the comparison of models. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
 
-What does not exist yet. WhatsApp itself, the eval suite, retrieval, cost routing, and the Azure deployment. Locally the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account. Nothing about answer quality should be read from it. With the key of an Azure OpenAI deployment in `.env` the same stack runs on a real model: I have held real conversations with three models and read the answers, which is a smoke test and not an evaluation. The evaluation that would say how well each does is Phase 3.
+The evaluation. A golden set of 32 conversations in pt-BR runs through the real worker against a real model and is judged by code. A pull request that touches prompts, graph, tools, providers or checks runs it in CI, signed in to Azure with a federated identity and no stored key, and fails when two cases that pass in every run on main no longer do. Two pull requests show it: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) trims the prompt, which I expected to fail and which the gate lets through with the numbers; [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) adds an instruction that sounds prudent, and the gate stops it and names the four conversations it broke.
+
+What does not exist yet. WhatsApp itself, retrieval, cost routing, and the Azure deployment. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
 
 ## Run it
 
@@ -59,6 +61,8 @@ Every number here comes from [docs/medicoes.md](docs/medicoes.md), which has the
 
 Latency of the pipeline without a model, from message sent to reply on the stream, on one laptop against the Service Bus emulator: median 144 ms and p95 549 ms with one conversation at a time; median 1.77 s and p95 2.12 s with ten at a time, at 5.7 messages per second. This is the overhead around the model, and most of it is the queue: a session per conversation costs a connection handshake on every turn. The measurement entry explains it and ADR 0001 names the faster alternative I did not take. With `gpt-5-mini` on Azure OpenAI answering, the same path takes a median of 8.1 s and a p95 of 10.4 s for a price question, of which 6.4 s are three or four sequential model calls and 1.5 s is the wait for the customer to finish typing. One such turn costs a tenth of a cent.
 
+The golden set, three runs per model: `gpt-oss-120b` passes 31, 31 and 31 of 32 conversations at USD 0.0006 per conversation and 2.6 s of model time per turn; `gpt-5-mini` 31, 32 and 30 at USD 0.0013 and 8.5 s; `gpt-4.1-mini` 31, 28 and 28 at USD 0.0008 and 3.4 s. One change of prompt took `gpt-5-mini` from 28, 29 and 27 to those numbers. Three more models were deployed and cannot call tools the way the agent needs.
+
 The reply checks, on a labelled set of 86 replies: 40 of 46 adversarial replies blocked (87.0%) and 2 of 40 benign replies blocked (5.0%). Half of the misses are a right value next to the wrong thing, which the check cannot see by design; the other half are a weakness of mine that the entry describes.
 
 ## Tests
@@ -73,11 +77,13 @@ The backend has about 500 tests and they run against a real PostgreSQL in a cont
 
 A permanent public demo. The always-on environment is estimated at USD 85 per month and the project runs on a student subscription with USD 100 of credit. The deployment will be applied for a measured window and destroyed, and a short video will stand in for the link. The estimate is in [docs/design/cost-estimate.md](docs/design/cost-estimate.md).
 
+A model that judges the model. Every expectation of the golden set is checked by code, against the reply as the guardrail's extractor reads it and against the database. It keeps the evaluation cheap and repeatable, and it means the set only asks what code can verify.
+
 A generic ReAct agent from a library. The turn is an explicit graph, so every step is a place where a limit can be enforced and a number can be measured.
 
 LangChain model wrappers. The model is called through the vendor SDK behind one small port. The reasons are in [ADR 0003](docs/adr/0003-provider-port-over-vendor-sdks.md).
 
-A second cloud or a second model vendor. Everything runs on Azure, and the model comparison planned for Phase 3 is across the models one student subscription can deploy. [ADR 0008](docs/adr/0008-one-cloud-azure.md) says why, including the part that was decided by the account and not by me.
+A second cloud or a second model vendor. Everything runs on Azure, and the model comparison is across the models one student subscription can deploy. [ADR 0008](docs/adr/0008-one-cloud-azure.md) says why, including the part that was decided by the account and not by me.
 
 A private network. The demo reaches the database and the queue over public endpoints guarded by identity and a firewall, which is cheaper and weaker than a virtual network. [ADR 0010](docs/adr/0010-public-endpoints-behind-identity-and-a-firewall.md).
 

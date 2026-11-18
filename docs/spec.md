@@ -89,8 +89,8 @@ Cost
 Evaluation
 
 - EVAL-1 [3] A versioned pt-BR golden set covers tool choice, arguments, numeric fidelity, policy, refusal, prompt injection and approval.
-- EVAL-2 [3] Evaluators are deterministic where the property allows it. A model judge has a versioned rubric.
-- EVAL-3 [3] A pull request that touches prompts, graph, tools or router fails when a metric drops past its threshold against the baseline of main, and the report is posted on it.
+- EVAL-2 [3] Evaluators are deterministic: the reply is read by the guardrail's extractor and the schedule is read from the database. Every property in the set could be checked that way, so no model judges a model. A property that cannot be checked by code would need a model judge with a versioned rubric, and none was added without one.
+- EVAL-3 [3] A pull request that touches prompts, graph, tools, providers or checks runs the set against a real model and fails when two or more cases that pass in every baseline run of main no longer pass. The report is posted on it.
 - EVAL-4 [3] The same suite runs against every model the subscription can deploy that accepts tool calling, and outputs quality, latency and cost per conversation side by side. A model left out is listed with the reason.
 - EVAL-6 [3] The owner's panel shows that comparison, and the default model is the one the numbers support.
 - EVAL-5 [3] A run refuses to start when its estimated cost passes the remaining budget.

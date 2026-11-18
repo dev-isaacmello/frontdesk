@@ -90,9 +90,45 @@ cd backend
 uv run python scripts/guardrail_rates.py
 ```
 
+## Phase 3, 2026-11-18: the golden set, before and after a prompt change, and across models
+
+What was measured. 32 conversations in pt-BR, each with what has to be true at its end: which tools were called, which values the last reply states, what is in the schedule, whether an approval is waiting. They cover choosing a tool, booking, moving and cancelling, prices by time of day, discounts and house rules, out-of-scope questions, attempts to trick the agent, actions that wait for the owner, and asking for a person. Each conversation runs through the real worker and graph, against a PostgreSQL started for the run, at a fixed instant (a Wednesday at 07:00 in São Paulo), with no quiet window. The verdict of a case is code: the reply is read by the same extractor the guardrail uses and the schedule is read from the database. No model judges a model.
+
+Why several runs. A model does not answer the same way twice. Every figure below is three runs of the same model with the same prompts, and I give the three counts, not only their mean.
+
+Before and after one prompt change, on `gpt-5-mini`. With the prompts as they were, the planner asked the customer for a day and a time before stating any price, and did not act on a request to move a booking. I added three instructions: quote with the current date instead of asking, take a weekday as its next date, and act at once when a single booking matches the request.
+
+- Before (prompts `9f2f84565883`): 28, 29 and 27 of 32. Mean 28.0.
+- After (prompts `c9ecc03865a9`): 31, 32 and 30 of 32. Mean 31.0.
+- Cost per conversation went from USD 0.00122 to USD 0.00132, and the median model time per turn from 7.2 s to 8.5 s. The agent now calls a tool where it used to ask a question.
+
+Across models, all with the prompts after the change.
+
+- `gpt-oss-120b`: 31, 31 and 31 of 32. USD 0.00061 per conversation. 2.6 s of model time per turn, median.
+- `gpt-5-mini`: 31, 32 and 30 of 32. USD 0.00132 per conversation. 8.5 s.
+- `gpt-4.1-mini`: 31, 28 and 28 of 32. USD 0.00079 per conversation. 3.4 s.
+
+What I take from it. On this set `gpt-oss-120b` does as well as `gpt-5-mini` at less than half the cost and a third of the model time, so it is the model I would run this agent on, and it is the model the gate in CI uses. The three cases it fails are different in each run: twice it answered a clear booking request without booking, once it gave up on a quote. `gpt-4.1-mini` loses most of its cases in one place: it sends requests about other customers' bookings to a person instead of declining them, which I count as a failure of the expected behaviour and is also the safest way to be wrong.
+
+Models left out. Six models could be deployed on the student subscription and three cannot do the job: Llama 3.3 70B rejects a request with more than one tool, Phi-4 rejects structured output and tool calling, Phi-4 mini ignores the tools. The Mistral models and Llama 4 Scout are sold through Azure Marketplace, which refuses a subscription with no payment method, and `o4-mini` has quota and can no longer be deployed. The list with each answer is in evals/models.json.
+
+The gate, seen working. A pull request that touches prompts, graph, tools, providers or checks runs the set on `gpt-oss-120b` and is compared with a baseline of the three runs above, in which a case counts as passing only if all three passed it (29 of 32). Two pull requests were opened to try it. The first removes three instructions from the planner prompt; I expected it to fail and it passed with 30 of 32, one stable case lost, which the gate tolerates (https://github.com/dev-isaacmello/frontdesk/pull/1). The second tells the agent to ask for confirmation before acting; it passed 26 of 32, lost four stable cases and the job failed, with the cases named in a comment (https://github.com/dev-isaacmello/frontdesk/pull/2). Every unit test passes on both, because they run on a scripted model.
+
+What it cost. The 14 runs recorded in evals/runs cost USD 0.43 of the subscription's credit, for 461 turns. A full run of the set costs between two and four cents depending on the model. The runner adds an estimate of the next run to that total and refuses to start past USD 5; the two runs in CI are not in the total, because their results are not committed.
+
+What this does not say. Thirty-two conversations written by one person, who also wrote the prompts, find the failures that person thought of. Three runs show that results vary and are too few to put a number on how much. The model time per turn is the sum of the calls of a turn as the adapter timed them, from one laptop, with three models sharing the network at the same moment. And passing a case means the checks I wrote were satisfied, not that a customer would have been happy with the reply.
+
+Reproduce. Needs the key of the model resource in `.env`. The first command costs about two cents.
+
+```
+cd backend
+uv run python scripts/run_evals.py --model gpt-oss-120b
+uv run python scripts/summarize_evals.py
+uv run python scripts/make_baseline.py --model gpt-oss-120b
+```
+
 ## Planned entries
 
-- Phase 3: eval metrics before and after one real prompt change, the cost of a full suite run, and quality, cost per conversation and latency for each model the subscription can deploy.
 - Phase 4: cost per conversation before and after routing, model and channel separately, with the quality metrics beside them; recall and precision at k for retrieval.
 - Phase 5: actual monthly cost of the deployed environment against the estimate.
 - Phase 6: throughput and p95 under load; result of the chaos scenario.
