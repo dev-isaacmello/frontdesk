@@ -6,7 +6,9 @@ import pytest
 from sqlalchemy import text
 
 from frontdesk.agent.graph import AgentDeps
+from frontdesk.channels.port import ChannelRejectedError, OutboundMessage, SendReceipt
 from frontdesk.db.session import SessionFactory, tenant_transaction
+from frontdesk.domain import conversations
 from frontdesk.domain.conversations import Receipt, transcript
 from frontdesk.providers.ledger import ModelLedger, turn_costs
 from frontdesk.providers.port import ModelRequest, ModelResponse
@@ -265,3 +267,28 @@ async def test_a_reply_with_a_byte_the_database_refuses_is_still_delivered(
         ("customer", "oi"),
         ("agent", "Oi, Ana! Como posso ajudar?"),
     ]
+
+
+class RefusingSender:
+    """A channel that will not take the message, whatever is tried."""
+
+    async def send(self, _message: OutboundMessage) -> SendReceipt:
+        raise ChannelRejectedError("400/131047")
+
+
+async def test_ing_8_a_message_the_channel_refuses_is_recorded_and_not_sent_again(
+    sessions: SessionFactory,
+) -> None:
+    deps, _ = worker(sessions, RefusingSender(), IN_SCOPE, says("Oi, Ana!"))  # type: ignore[arg-type]
+    receipt = await say(sessions, "oi", "m1")
+
+    await handle(deps, trigger_of(receipt))
+    await handle(deps, trigger_of(receipt))
+
+    async with tenant_transaction(sessions, BARBERSHOP.id) as session:
+        refused = await session.execute(
+            text("select send_error, sent_at from messages where direction = 'out'")
+        )
+        waiting = await conversations.undelivered(session, receipt.conversation_id)
+    assert refused.all() == [("400/131047", None)]
+    assert waiting == []

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from frontdesk.api.deps import ApiDeps
 from frontdesk.api.owner import owner_router
 from frontdesk.api.webchat import webchat_router
+from frontdesk.api.whatsapp import WhatsAppWebhook, whatsapp_router
 
 __all__ = ["ApiDeps", "create_app"]
 
@@ -31,6 +32,12 @@ def create_app(deps: ApiDeps) -> FastAPI:
     )
     app.include_router(webchat_router(deps))
     app.include_router(owner_router(deps))
+    if deps.whatsapp_app_secret and deps.whatsapp_verify_token:
+        app.include_router(
+            whatsapp_router(
+                deps, WhatsAppWebhook(deps.whatsapp_app_secret, deps.whatsapp_verify_token)
+            )
+        )
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

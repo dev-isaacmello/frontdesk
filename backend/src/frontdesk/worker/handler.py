@@ -13,7 +13,7 @@ from frontdesk import telemetry
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps, resume_turn, run_turn
 from frontdesk.agent.turn import TurnInput, TurnResult
-from frontdesk.channels.port import ChannelSender
+from frontdesk.channels.port import ChannelRejectedError, ChannelSender
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain import approvals, conversations
 from frontdesk.domain.customers import Channel
@@ -146,7 +146,23 @@ async def _deliver(deps: WorkerDeps, trigger: Trigger) -> None:
         outbox = await conversations.undelivered(session, trigger.conversation_id)
 
     for message in outbox:
-        with telemetry.span(f"send {message.channel}", kind=SpanKind.CLIENT):
-            receipt = await deps.senders[message.channel].send(message)
+        try:
+            with telemetry.span(f"send {message.channel}", kind=SpanKind.CLIENT):
+                receipt = await deps.senders[message.channel].send(message)
+        except ChannelRejectedError as refused:
+            # Sending it again would be refused again. It is recorded and the rest goes on;
+            # a channel that is merely down raises something else and the trigger is retried.
+            log.warning(
+                "message_refused_by_channel",
+                extra={
+                    "tenant_id": str(trigger.tenant_id),
+                    "conversation_id": str(trigger.conversation_id),
+                    "channel": message.channel,
+                    "reason": refused.reason,
+                },
+            )
+            async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+                await conversations.mark_refused(session, message.message_id, refused.reason)
+            continue
         async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
             await conversations.mark_sent(session, message.message_id, receipt, deps.clock())

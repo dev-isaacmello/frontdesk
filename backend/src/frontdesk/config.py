@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     """What the knowledge base is embedded and searched with: the offline word hashing, or
     the name of an embedding deployment on the same Azure OpenAI resource."""
 
+    whatsapp_app_secret: SecretStr | None = None
+    """The secret of the Meta app, which signs every webhook notification."""
+
+    whatsapp_verify_token: SecretStr | None = None
+    """Chosen here and typed into Meta's dashboard when the webhook is subscribed."""
+
+    whatsapp_access_token: SecretStr | None = None
+    """What the worker sends messages with. Without it the worker has no WhatsApp sender."""
+
     otlp_endpoint: str | None = None
     """Where spans are sent, as a full OTLP HTTP URL ending in /v1/traces. Unset, no span
     leaves the process."""

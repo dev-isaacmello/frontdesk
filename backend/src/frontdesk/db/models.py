@@ -300,6 +300,7 @@ class Message(Base):
     provider_message_id: Mapped[str | None]
     channel_cost_micros: Mapped[int | None]
     channel_cost_currency: Mapped[str | None]
+    send_error: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 
 

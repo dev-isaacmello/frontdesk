@@ -11,6 +11,8 @@ that connects with more than the application role:
     FRONTDESK_DATABASE_URL             SQLAlchemy URL of the application role
     FRONTDESK_DEMO_OWNER_PASSWORD      password of the demo owner accounts; none if unset
     FRONTDESK_EMBEDDING_MODEL          embedding deployment for the knowledge base; offline if unset
+    FRONTDESK_WHATSAPP_PHONE_NUMBER_ID id of one tenant's WhatsApp business number; none if unset
+    FRONTDESK_WHATSAPP_TENANT          slug of that tenant; the first one if unset
 """
 
 import asyncio
@@ -27,7 +29,7 @@ from frontdesk.agent import checkpoints
 from frontdesk.db.bootstrap import APP_ROLE, BootstrapPlan, bootstrap
 from frontdesk.db.session import create_engine, create_session_factory
 from frontdesk.providers.embeddings import Embedder, HashingEmbedder
-from frontdesk.seed import seed
+from frontdesk.seed import TENANTS, link_whatsapp_number, seed
 from frontdesk.wiring import azure_openai_embedder, model_access_from_env
 
 log = logging.getLogger("frontdesk.setup")
@@ -64,7 +66,12 @@ def main() -> None:
 async def _seed(database_url: str, owner_password: str | None) -> None:
     engine = create_engine(database_url)
     try:
-        await seed(create_session_factory(engine), owner_password, _embedder())
+        factory = create_session_factory(engine)
+        await seed(factory, owner_password, _embedder())
+        number = os.environ.get("FRONTDESK_WHATSAPP_PHONE_NUMBER_ID")
+        if number:
+            slug = os.environ.get("FRONTDESK_WHATSAPP_TENANT") or TENANTS[0].slug
+            await link_whatsapp_number(factory, slug, number)
     finally:
         await engine.dispose()
 

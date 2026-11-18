@@ -1,9 +1,11 @@
 """The composition root: where configuration becomes the objects the services run on."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from openai import AsyncOpenAI
@@ -13,9 +15,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from frontdesk.agent.graph import AgentDeps
 from frontdesk.agent.router import Routes
 from frontdesk.api.app import ApiDeps, create_app
+from frontdesk.channels.port import ChannelSender
 from frontdesk.channels.webchat import PostgresNotifications, WebchatSender
+from frontdesk.channels.whatsapp import WhatsAppSender
 from frontdesk.config import Settings
 from frontdesk.db.session import SessionFactory, create_engine, create_session_factory
+from frontdesk.domain.customers import Channel
 from frontdesk.providers.azure_openai import AzureOpenAIProvider
 from frontdesk.providers.embeddings import AzureOpenAIEmbedder, Embedder, HashingEmbedder
 from frontdesk.providers.ledger import ModelLedger
@@ -115,6 +120,8 @@ def api_from(settings: Settings) -> FastAPI:
             notifications=PostgresNotifications(settings.database_dsn),
             webchat_secret=settings.webchat_secret.get_secret_value(),
             clock=now,
+            whatsapp_app_secret=_revealed(settings.whatsapp_app_secret),
+            whatsapp_verify_token=_revealed(settings.whatsapp_verify_token),
             # Used only to check the owner's rules when they are saved.
             agent=AgentDeps(
                 sessions=sessions,
@@ -124,6 +131,24 @@ def api_from(settings: Settings) -> FastAPI:
             ),
         )
     )
+
+
+def _revealed(secret: SecretStr | None) -> str | None:
+    return secret.get_secret_value() if secret else None
+
+
+def _senders(settings: Settings, sessions: SessionFactory) -> dict[Channel, ChannelSender]:
+    senders: dict[Channel, ChannelSender] = {"webchat": WebchatSender(sessions)}
+    if settings.whatsapp_access_token:
+        senders["whatsapp"] = WhatsAppSender(
+            # Its timeout is set on each request.
+            httpx.AsyncClient(),
+            sessions,
+            settings.whatsapp_access_token,
+            clock=now,
+            sleep=asyncio.sleep,
+        )
+    return senders
 
 
 def worker_from(settings: Settings, checkpointer: BaseCheckpointSaver[str]) -> WorkerDeps:
@@ -150,7 +175,7 @@ def worker_from(settings: Settings, checkpointer: BaseCheckpointSaver[str]) -> W
             ),
             checkpointer=checkpointer,
         ),
-        senders={"webchat": WebchatSender(sessions)},
+        senders=_senders(settings, sessions),
         clock=now,
         quiet_window=timedelta(seconds=settings.quiet_window_seconds),
     )

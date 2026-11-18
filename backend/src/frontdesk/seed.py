@@ -9,6 +9,7 @@ from datetime import time
 from uuid import UUID, uuid5
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from frontdesk.db.models import (
@@ -197,6 +198,17 @@ async def seed(
             if owner_password is not None:
                 await _add_owner(session, tenant, owner_password)
         await _embed_knowledge(factory, tenant, embedder)
+
+
+async def link_whatsapp_number(factory: SessionFactory, slug: str, phone_number_id: str) -> None:
+    """Makes a WhatsApp business number the address of one tenant. Safe to run again."""
+    tenant = next(each for each in TENANTS if each.slug == slug)
+    async with tenant_transaction(factory, tenant.id) as session:
+        await session.execute(
+            insert(ChannelAccount)
+            .values(tenant_id=tenant.id, channel="whatsapp", external_id=phone_number_id)
+            .on_conflict_do_nothing()
+        )
 
 
 async def _embed_knowledge(factory: SessionFactory, tenant: TenantSeed, embedder: Embedder) -> None:

@@ -60,6 +60,8 @@ Rules that hold for every adapter:
 
 The WhatsApp adapter and the web chat adapter implement both sides. The web chat inbound is a POST from the BFF; its outbound publishes to the SSE stream of that session.
 
+As built in Phase 5 the contract is smaller than the sketch above. A sender takes the outbound message, which carries the tenant's own address on the channel and the customer's, and returns a receipt with the provider's id and, when the channel knows it at that moment, what the message cost. It raises one of two errors: unavailable, which the queue retries, and rejected, which is recorded on the message so that it is never sent again. A closed service window is a rejection with its code and has no type of its own. There is no read receipt or typing indicator. WhatsApp tells what a message is charged in a later status update, and the webhook writes it onto the message then.
+
 ## Model provider
 
 ```python

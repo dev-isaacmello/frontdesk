@@ -22,3 +22,6 @@ class ApiDeps:
     webchat_secret: str
     clock: Callable[[], datetime]
     agent: AgentDeps
+    whatsapp_app_secret: str | None = None
+    whatsapp_verify_token: str | None = None
+    """Both set, the WhatsApp webhook exists. Otherwise the route is not there at all."""

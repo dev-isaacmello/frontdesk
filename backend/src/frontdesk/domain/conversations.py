@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from frontdesk.agent.turn import HistoryMessage, TurnInput, TurnResult
-from frontdesk.channels.port import OutboundMessage, SendReceipt
+from frontdesk.channels.port import ChannelCost, OutboundMessage, SendReceipt
 from frontdesk.db.models import (
     ApprovalRequest,
     Conversation,
@@ -415,7 +415,13 @@ async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now
 
 async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[OutboundMessage]:
     rows = await session.execute(
-        select(Message, ChannelAccountRow.channel, CustomerIdentity.external_id)
+        select(
+            Message,
+            ChannelAccountRow.channel,
+            ChannelAccountRow.external_id,
+            CustomerIdentity.external_id,
+            CustomerIdentity.phone,
+        )
         .join(Conversation, Conversation.id == Message.conversation_id)
         .join(ChannelAccountRow, ChannelAccountRow.id == Conversation.channel_account_id)
         .join(
@@ -427,6 +433,8 @@ async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[Outb
             Message.conversation_id == conversation_id,
             Message.direction == "out",
             Message.sent_at.is_(None),
+            # What the channel refused is not sent again.
+            Message.send_error.is_(None),
         )
         .order_by(Message.occurred_at, Message.id)
     )
@@ -436,26 +444,43 @@ async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[Outb
             tenant_id=message.tenant_id,
             conversation_id=message.conversation_id,
             channel=cast("Channel", channel),
-            recipient_external_id=external_id,
+            recipient_external_id=recipient,
             text=message.body,
+            account_external_id=account,
+            recipient_phone=phone,
         )
-        for message, channel, external_id in rows
+        for message, channel, account, recipient, phone in rows
     ]
 
 
 async def mark_sent(
     session: AsyncSession, message_id: UUID, receipt: SendReceipt, now: datetime
 ) -> None:
-    """Records that a message went out and what the channel charged for it."""
+    """Records that a message went out and what the channel charged for it, when it says."""
+    cost = receipt.cost
     await session.execute(
         update(Message)
         .where(Message.id == message_id)
         .values(
             sent_at=now,
             provider_message_id=receipt.provider_message_id,
-            channel_cost_micros=receipt.cost.micros,
-            channel_cost_currency=receipt.cost.currency,
+            channel_cost_micros=None if cost is None else cost.micros,
+            channel_cost_currency=None if cost is None else cost.currency,
         )
+    )
+
+
+async def mark_refused(session: AsyncSession, message_id: UUID, reason: str) -> None:
+    """Records that the channel will not take this message, so that it is not sent again."""
+    await session.execute(update(Message).where(Message.id == message_id).values(send_error=reason))
+
+
+async def record_charge(session: AsyncSession, provider_message_id: str, cost: ChannelCost) -> None:
+    """Records what the channel said, after the send, that a message is charged."""
+    await session.execute(
+        update(Message)
+        .where(Message.provider_message_id == provider_message_id, Message.direction == "out")
+        .values(channel_cost_micros=cost.micros, channel_cost_currency=cost.currency)
     )
 
 
