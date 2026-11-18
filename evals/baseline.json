@@ -2,7 +2,7 @@
   "model": "gpt-oss-120b",
   "prompt_version": "9c4dbb1f0338",
   "golden_version": "2026-11-18.3",
-  "runs": 3,
+  "runs": 4,
   "cases": [
     {
       "id": "price-of-one-service",
@@ -213,8 +213,8 @@
   "totals": {
     "cases": 41,
     "passed": 36,
-    "cost_per_conversation_microusd": 713,
-    "model_ms_per_turn_p50": 2822,
+    "cost_per_conversation_microusd": 709,
+    "model_ms_per_turn_p50": 2816,
     "blocked_drafts": 2
   }
 }

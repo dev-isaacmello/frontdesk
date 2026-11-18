@@ -4,26 +4,27 @@
     {
       "model": "gpt-oss-120b",
       "prompt_version": "9c4dbb1f0338",
-      "runs": 3,
-      "last_run_at": "2026-11-18T17:29:32+00:00",
+      "runs": 4,
+      "last_run_at": "2026-11-18T17:50:55+00:00",
       "cases": 41,
       "passed_per_run": [
         38,
         38,
+        40,
         40
       ],
-      "passed_mean": 38.7,
-      "cost_per_conversation_microusd": 713,
-      "model_ms_per_turn_p50": 2822,
-      "blocked_drafts_mean": 1.7,
+      "passed_mean": 39,
+      "cost_per_conversation_microusd": 709,
+      "model_ms_per_turn_p50": 2816,
+      "blocked_drafts_mean": 1.5,
       "by_category": {
         "approval": {
           "cases": 2,
-          "passed_mean": 1.7
+          "passed_mean": 1.8
         },
         "arguments": {
           "cases": 7,
-          "passed_mean": 5.7
+          "passed_mean": 5.8
         },
         "handoff": {
           "cases": 2,
@@ -35,7 +36,7 @@
         },
         "injection": {
           "cases": 4,
-          "passed_mean": 3.7
+          "passed_mean": 3.8
         },
         "knowledge": {
           "cases": 5,
@@ -43,7 +44,7 @@
         },
         "numbers": {
           "cases": 6,
-          "passed_mean": 5.7
+          "passed_mean": 5.8
         },
         "policy": {
           "cases": 3,
