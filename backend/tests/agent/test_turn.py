@@ -1,6 +1,7 @@
 """One turn of the graph, driven by a scripted model against real PostgreSQL."""
 
 import json
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -10,7 +11,7 @@ from frontdesk.agent.prompts import REFUSAL
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.bookings import BookingInfo
 from frontdesk.providers.ledger import ModelLedger
-from frontdesk.providers.port import ModelFilteredError, ModelResponse
+from frontdesk.providers.port import ModelFilteredError, ModelResponse, ModelThrottledError
 from frontdesk.providers.scripted import ScriptedProvider, ScriptExhaustedError, calls, says
 from frontdesk.seed import ARENA, BARBERSHOP, TenantSeed
 from frontdesk.tools.bookings import ListCustomerBookingsInput, list_customer_bookings
@@ -199,3 +200,48 @@ async def test_pol_4_a_plan_the_provider_refuses_to_write_gets_the_fixed_refusal
 
     assert result.outcome == "refused"
     assert len(provider.requests) == 2
+
+
+async def test_a_throttled_call_is_made_again_in_place_after_the_wait_the_provider_asked(
+    sessions: SessionFactory,
+) -> None:
+    """Failing the turn instead made it start over and spend its earlier calls again."""
+    agent, provider = deps(
+        sessions,
+        IN_SCOPE,
+        ModelThrottledError("slow down", retry_after=0.4),
+        ModelThrottledError("slow down"),
+        says("Temos corte e barba."),
+    )
+    waits: list[float] = []
+
+    async def record(seconds: float) -> None:
+        waits.append(seconds)
+
+    result = await run_turn(
+        replace(agent, sleep=record), await start_turn(sessions, "quais serviços vocês têm?")
+    )
+
+    assert result.outcome == "replied"
+    # One call to classify and three to plan: the classification was not paid for twice.
+    assert len(provider.requests) == 4
+    # What the provider asked, and one second when it did not say.
+    assert waits == [0.4, 1.0]
+
+
+async def test_a_call_that_stays_throttled_fails_its_turn_for_the_worker_to_retry(
+    sessions: SessionFactory,
+) -> None:
+    agent, provider = deps(sessions, *[ModelThrottledError("slow down", retry_after=30)] * 9)
+    waits: list[float] = []
+
+    async def record(seconds: float) -> None:
+        waits.append(seconds)
+
+    with pytest.raises(ModelThrottledError):
+        await run_turn(replace(agent, sleep=record), await start_turn(sessions, "oi"))
+
+    # A provider cannot make a call wait without end: each wait is capped, and so is their sum.
+    assert max(waits) <= 5
+    assert sum(waits) <= 20
+    assert len(provider.requests) == len(waits) + 1

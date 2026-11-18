@@ -10,6 +10,7 @@ The planner's last message, the one without tool calls, is the reply. Persisting
 sending it belong to the worker, so the graph knows nothing about channels.
 """
 
+import asyncio
 import datetime as dt
 import inspect
 import json
@@ -54,6 +55,7 @@ from frontdesk.providers.port import (
     ModelProvider,
     ModelRequest,
     ModelResponse,
+    ModelThrottledError,
 )
 from frontdesk.tools.registry import TOOL_SPECS
 
@@ -68,6 +70,13 @@ __all__ = [
 ]
 
 log = logging.getLogger(__name__)
+
+# A throttled call waits what the provider asked, one second when it did not say, never more
+# than the cap at once and never more than the budget in all. Past the budget the call
+# fails, and the worker retries the turn.
+_THROTTLE_WAIT_DEFAULT_S = 1.0
+_THROTTLE_WAIT_CAP_S = 5.0
+_THROTTLE_WAIT_BUDGET_S = 20.0
 
 # A backstop above the counted limits below, which are the ones that act: they end the
 # turn in handoff, where this one would raise.
@@ -98,6 +107,8 @@ class AgentDeps:
     embedder: Embedder | None = None
     """What the customer's message is embedded with to search the knowledge base. Without
     one the turn runs with no retrieval."""
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+    """How a throttled model call waits before it is made again."""
     checkpointer: BaseCheckpointSaver[str] = field(default_factory=InMemorySaver)
     """Where a turn that stops for approval is kept. In memory unless one is given, which
     is enough for a turn that starts and ends in the same process."""
@@ -240,7 +251,7 @@ async def _call_model(
         },
         kind=SpanKind.CLIENT,
     ) as call:
-        response = await deps.provider.complete(request)
+        response = await _complete(deps, turn, node, request)
         call.set_attribute("gen_ai.response.model", response.model)
         call.set_attribute("gen_ai.usage.input_tokens", response.usage.input_tokens)
         call.set_attribute("gen_ai.usage.output_tokens", response.usage.output_tokens)
@@ -261,6 +272,29 @@ async def _call_model(
             ),
         }
     )
+
+
+async def _complete(
+    deps: AgentDeps, turn: TurnInput, node: str, request: ModelRequest
+) -> ModelResponse:
+    """Calls the model, and calls again while the provider says it is over its rate.
+
+    Measured under load: Azure asks for waits of a tenth of a second to a second. Failing
+    the turn on the first of them made the worker start the turn over and spend again the
+    calls that had already been answered, which kept the deployment over its rate. Waiting
+    here costs the customer a second and the deployment nothing.
+    """
+    waited = 0.0
+    while True:
+        try:
+            return await deps.provider.complete(request)
+        except ModelThrottledError as throttled:
+            metrics.model_throttled(turn.tenant_id, node, request.model)
+            wait = min(throttled.retry_after or _THROTTLE_WAIT_DEFAULT_S, _THROTTLE_WAIT_CAP_S)
+            if waited + wait > _THROTTLE_WAIT_BUDGET_S:
+                raise
+            waited += wait
+            await deps.sleep(wait)
 
 
 async def _classify(state: _State, runtime: Runtime[AgentDeps]) -> _State:

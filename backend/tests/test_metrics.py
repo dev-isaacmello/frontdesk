@@ -10,7 +10,7 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader, NumberDataPoi
 
 from frontdesk import metrics
 from frontdesk.db.session import SessionFactory
-from frontdesk.providers.port import ModelFilteredError
+from frontdesk.providers.port import ModelFilteredError, ModelThrottledError
 from frontdesk.providers.scripted import calls, says
 from frontdesk.queue.triggers import Trigger
 from frontdesk.seed import BARBERSHOP
@@ -238,6 +238,32 @@ async def test_obs_3_a_message_the_provider_filter_refused_is_counted_and_logged
     assert total(measured, "frontdesk.turns", frontdesk__turn__outcome="refused") == 1
     [line] = [record for record in caplog.records if record.getMessage() == "model_filtered"]
     assert (line.node, line.conversation_id) == ("classify", str(trigger.conversation_id))  # type: ignore[attr-defined]
+
+
+async def test_obs_3_a_model_call_the_provider_throttled_is_counted_where_it_waited(
+    sessions: SessionFactory, measured: InMemoryMetricReader
+) -> None:
+    worker, _ = scripted_worker(
+        sessions,
+        RecordingSender(),
+        ModelThrottledError("slow down", retry_after=0.001),
+        IN_SCOPE,
+        says("Temos corte e barba."),
+    )
+
+    await handle(worker, await a_message(sessions, "quais serviços vocês têm?"))
+
+    assert points(measured, "frontdesk.model.throttled") == [
+        (
+            {
+                "frontdesk.tenant_id": TENANT,
+                "frontdesk.node": "classify",
+                "gen_ai.request.model": "scripted",
+            },
+            1,
+        )
+    ]
+    assert total(measured, "frontdesk.turns", frontdesk__turn__outcome="replied") == 1
 
 
 async def test_obs_3_a_trigger_that_never_succeeds_counts_each_failure_and_one_dead_letter(

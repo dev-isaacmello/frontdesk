@@ -100,7 +100,8 @@ def _azure_client(endpoint: str, key: SecretStr | None) -> AsyncOpenAI:
         # The v1 route, where the model named in a request is the deployment.
         base_url=f"{endpoint.rstrip('/')}/openai/v1/",
         api_key=key.get_secret_value() if key else _entra_token_provider(),
-        # One retry policy for the whole turn, in the worker, not one per call here.
+        # The SDK retries nothing. A throttled call is made again by the graph, which knows
+        # how long it may wait, and any other failure is the worker's, as a whole turn.
         max_retries=0,
     )
 

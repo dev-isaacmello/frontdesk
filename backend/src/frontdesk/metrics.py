@@ -53,6 +53,10 @@ class _Instruments:
             "frontdesk.model.filtered",
             description="Model calls the provider's content filter refused.",
         )
+        self.model_throttled = meter.create_counter(
+            "frontdesk.model.throttled",
+            description="Model calls the provider refused for being over its rate.",
+        )
         self.tool_calls = meter.create_counter(
             "frontdesk.tool.calls",
             description="Tool calls a model asked for. error.type is set on the ones that failed.",
@@ -143,6 +147,10 @@ def model_called(
 
 def model_filtered(tenant_id: UUID, node: str) -> None:
     _instruments.model_filtered.add(1, {_TENANT: str(tenant_id), _NODE: node})
+
+
+def model_throttled(tenant_id: UUID, node: str, model: str) -> None:
+    _instruments.model_throttled.add(1, {_TENANT: str(tenant_id), _NODE: node, _MODEL: model})
 
 
 def tool_called(tenant_id: UUID, tool: str, error: str | None) -> None:

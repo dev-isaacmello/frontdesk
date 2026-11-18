@@ -34,11 +34,10 @@ _MAX_THROTTLE_WAIT_SECONDS = 60.0
 def held_seconds(error: BaseException, attempt: int, pause: Callable[[int], float]) -> float:
     """How long a failed trigger is held before it is given back.
 
-    The backoff, or what a throttling provider asked for when that is longer. The quota is
-    counted over a minute and the backoff of five attempts adds up to thirty seconds, so
-    without this a turn can spend every attempt inside one window that is already used up.
-    The slot stays taken meanwhile, which is the point: fewer turns run while there is no
-    quota to run them with, and the rest wait in the queue.
+    The backoff, or what a throttling provider asked for when that is longer, up to a
+    minute. The waits Azure asks for are under a second and are served where the call is
+    made (see the graph), so this is for a provider that asks for more than a call may
+    wait. The slot stays taken meanwhile: fewer turns run while there is no quota for them.
     """
     backoff = pause(attempt)
     if isinstance(error, ModelThrottledError) and error.retry_after is not None:
