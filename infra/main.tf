@@ -352,7 +352,7 @@ resource "azurerm_container_app" "api" {
     for_each = toset(local.workload_secrets.api)
     content {
       name                = secret.value
-      key_vault_secret_id = azurerm_key_vault_secret.main[secret.value].versionless_id
+      key_vault_secret_id = azurerm_key_vault_secret.main[secret.value].id
       identity            = azurerm_user_assigned_identity.workload["api"].id
     }
   }
@@ -448,7 +448,7 @@ resource "azurerm_container_app" "worker" {
     for_each = toset(local.workload_secrets.worker)
     content {
       name                = secret.value
-      key_vault_secret_id = azurerm_key_vault_secret.main[secret.value].versionless_id
+      key_vault_secret_id = azurerm_key_vault_secret.main[secret.value].id
       identity            = azurerm_user_assigned_identity.workload["worker"].id
     }
   }
@@ -528,7 +528,7 @@ resource "azurerm_container_app" "web" {
 
   secret {
     name                = "webchat-secret"
-    key_vault_secret_id = azurerm_key_vault_secret.main["webchat-secret"].versionless_id
+    key_vault_secret_id = azurerm_key_vault_secret.main["webchat-secret"].id
     identity            = azurerm_user_assigned_identity.workload["web"].id
   }
 
@@ -606,7 +606,7 @@ resource "azurerm_container_app_job" "setup" {
     for_each = toset(local.workload_secrets.setup)
     content {
       name                = secret.value
-      key_vault_secret_id = azurerm_key_vault_secret.main[secret.value].versionless_id
+      key_vault_secret_id = azurerm_key_vault_secret.main[secret.value].id
       identity            = azurerm_user_assigned_identity.workload["setup"].id
     }
   }
