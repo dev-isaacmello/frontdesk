@@ -1,5 +1,7 @@
 # Frontdesk
 
+English | [Português](README.pt-BR.md)
+
 A small business answers the same questions and books the same slots all day on WhatsApp. This system answers and books for it, inside limits the business sets, and hands the conversation to a person when it should not decide alone. It is multi-tenant and built to run on Azure.
 
 This is a portfolio project, built in six phases, and the two businesses in it are fictional. This file says what exists and what was measured, not what is planned. The plan it was built against is in [docs/spec.md](docs/spec.md).
@@ -9,7 +11,7 @@ This is a portfolio project, built in six phases, and the two businesses in it a
 - [docs/medicoes.md](docs/medicoes.md) is the log of every number in this file, with the command that reproduces it. It also has the times a measurement proved me wrong: a hypothesis about throttling that the load refuted, a defect a repeated run exposed, and what the first deployment and the first real conversation found that no test had.
 - [The numeric guardrail](backend/src/frontdesk/guardrail) is deterministic code that lets a price, a time or a date into a reply only if a tool of that turn returned it. [ADR 0006](docs/adr/0006-deterministic-numeric-guardrail.md) has what it blocked and what it missed when measured.
 - [The isolation test](backend/tests/test_tenant_isolation.py) connects as the application's role and tries to read and write another tenant's rows. [ADR 0004](docs/adr/0004-row-level-security-with-transaction-scoped-tenant.md) is the design it proves.
-- Two open pull requests show the evaluation gate at work: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) it lets through with the numbers, [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) it stops, naming the four conversations the change broke. They are there to be read and not to be merged.
+- Two pull requests show the evaluation gate at work: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) it lets through with the numbers, [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) it stops, naming the four conversations the change broke. They were opened to be read and are closed without being merged.
 - [ADR 0001](docs/adr/0001-postgres-inbox-and-session-queue-as-trigger.md) is the decision the rest stands on: PostgreSQL is the inbox, the queue carries only a trigger, and a lock on a queue is not exclusivity.
 
 ## Status
@@ -56,7 +58,7 @@ flowchart TD
     turn --> model[Model provider port]
     tools --> pg
     worker -- reply to outbox --> pg
-    turn --> checks[Reply checks: numbers, discounts, claimed actions]
+    turn --> checks[Reply checks: a text at all, numbers, discounts, claimed actions]
     turn -. pause for approval .-> pg
     pg -. notify .-> api
     api -. event stream .-> panel
