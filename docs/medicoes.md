@@ -178,7 +178,69 @@ uv run python scripts/run_evals.py --model gpt-5-mini --classify-model gpt-oss-1
 uv run python scripts/summarize_evals.py
 ```
 
+## Phase 6, 2026-11-18: throughput and latency under load, and three failures made on purpose
+
+What was measured. How many customers the stack answers per second and how long each waits, at rising numbers of customers at once, first with the offline model and then with a real one. Then what the customers got when the worker was killed and when the model could not be reached. A level of load is a number of customers; each opens a new web chat conversation, asks a price, waits for the reply on the event stream and starts over, for 60 seconds, alternating between the two tenants. The latency is from the start of the POST to the reply.
+
+What was not measured. Azure. The queue is Microsoft's emulator, the database a container, and the load generator runs on the same laptop as the stack and takes CPU from it. One worker process with six slots. Only the web chat channel and only a price question, which makes no booking, so nothing here exercises a write being retried. Each level ran once in the reported run.
+
+Environment. The tag `phase-6`. The laptop of the Phase 1 entry: Intel Core i5-10300H, 8 threads, 16 GB, Ubuntu 24.04, Docker 29.8.2, other development containers running. PostgreSQL 18, Service Bus emulator 2.0.1, a quiet window of 1.5 s before a turn starts. Metrics on, pushed to Prometheus 3.16.0, and traces off during the load. The real model is `gpt-oss-120b` with `text-embedding-3-small` for retrieval, on a Global Standard deployment whose limits, read with `az cognitiveservices account deployment list`, are 100 requests and 100,000 tokens per minute.
+
+Traces and metrics, checked against real backends first. One message sent through the web chat to the real model arrived in Phoenix 21.0.0 as one trace of 21 spans: the request, the worker's span as its child across the queue, each node of the graph, four chat calls and one embedding with their tokens, two tool calls and the send. After another message Prometheus held the series the worker pushed, for example 3,951 input tokens under the node `plan` and the tenant's id. Until then both had only been tested in memory.
+
+Result, offline model.
+
+- 1 customer: 38 replies in 61 s, 0.62 per second, median 1,575 ms, p95 1,661 ms, slowest 1,783 ms.
+- 6 customers: 224 replies, 3.64 per second, median 1,639 ms, p95 1,772 ms, slowest 2,043 ms.
+- 12 customers: 351 replies, 5.66 per second, median 2,037 ms, p95 2,657 ms, slowest 3,695 ms.
+- 24 customers: 366 replies, 5.76 per second, median 4,097 ms, p95 4,183 ms, slowest 5,279 ms.
+
+Every customer was answered at every level. The floor is the quiet window: of the 1.57 s of a reply with nobody else in line, 1.5 s is the worker waiting to see whether the customer is still typing, and the trace of one such reply has the request at 0.12 s, the nodes at 0.03 s and the send at 2 ms. The ceiling is the one Phase 1 found, between 5.6 and 5.8 conversations per second for six slots, because a slot spends about 0.8 s opening and closing a Service Bus session around each turn. Past it, more customers only wait longer: the metrics put the 95th percentile of the wait for a turn at 4.8 s over the run, while no node of the graph had a p95 above 48 ms.
+
+The row every model call updates. ADR 0013 keeps the deployment's total of the day in one row and asked this test whether that row is contended. A sample of PostgreSQL once a second found a session waiting for a lock in 7 of 260 samples, never more than 3 at once, at up to 5.8 turns per second with three model calls each. It is visible and it is not what limits anything here.
+
+Result, real model.
+
+- 3 customers: 33 answered in 66 s, 0.50 per second, median 5,024 ms, p95 9,046 ms, slowest 9,632 ms. Nobody handed to a person.
+- 6 customers: 17 answered and 4 handed to a person, median 12,449 ms, p95 47,357 ms.
+- 12 customers: 24 answered and 4 handed to a person, median 24,049 ms, p95 71,962 ms.
+
+Here the limit is the deployment's quota and not the pipeline. A conversation spends three or four chat requests and the deployment allows 100 a minute, so about thirty conversations a minute is what it answers, and three customers at once already ask for that. Above it the provider answered 99 calls with a throttling error during the run. The worker did what it is built to do, retry and then hand over, and nobody was left without an answer of some kind. What it does badly: a turn's five attempts are spread over 30 seconds and the quota is counted over 60, so a turn can fail five times inside one spent window; and each retry starts the turn over and spends requests again, which feeds the throttling. Eight customers were told a person would take over when waiting longer would have got them an answer. I did not change this. Inside a turn, by the metrics, the 95th percentile of a model call was 1.3 s to classify, 1.2 s to embed and 2.6 s to plan, and every other node was at or under 27 ms.
+
+Result, failures.
+
+- Worker killed before its turns started. Twelve first messages, then SIGKILL to the worker one second later, while every turn was still inside its quiet window. The worker stayed down 14 s. All twelve customers were answered, each exactly once, the last one 4.2 s after the restart.
+- Worker killed in the middle of its turns, real model. Six first messages, SIGKILL four seconds later, with the six turns under way. All six were answered, each exactly once, and no message was left without a turn. The last reply came 173 s after the restart. A turn reserves its conversation for three minutes so that two workers never run it at once, and nothing renews or releases that reservation when the process dies, so the trigger that comes back waits for it to run out. The ledger has 40 model calls for these six conversations where 24 to 30 would do: the calls of the turns that died were paid for and are recorded.
+- Model unreachable. The worker restarted with the model's address pointing where nothing listens, then six first messages. Each customer was told that a person takes over, once, 37.2 s after writing: 30 s of waiting between five attempts, plus the quiet window and the attempts. No model call was recorded. The metrics counted 30 failed deliveries under `ModelUnavailableError`, 6 dead letters and 6 handoffs with the reason `agent_failed`. With the worker put back, a new customer was answered in 2.4 s. The six conversations stayed with the team, which is the design.
+
+What it says and does not say. On this machine the pipeline around the model has room for about 5.7 conversations per second per worker of six slots, and a real model on a student quota uses a tenth of that. The first thing to run out is the provider's requests per minute, and the way this worker retries makes running out worse than it has to be. A worker that dies loses no message and repeats none, and costs its customers up to three minutes. None of this is Azure: there the session handshake crosses a network, the queue allows more connections, and a second worker replica is possible, which I have not run.
+
+Seen once and not explained. In an earlier run of the same script, the level of one customer had at least two of 34 replies above 3 s, with a slowest of 4,151 ms. In three later runs of that level, with 56, 93 and 38 replies, none passed 1.9 s. The Phase 1 entry has the same kind of outlier. I ran the later ones with tracing on to catch one and did not.
+
+Reproduce.
+
+```
+FRONTDESK_MODEL_PROVIDER=offline FRONTDESK_MODEL=offline FRONTDESK_EMBEDDING_MODEL=offline \
+FRONTDESK_OTLP_METRICS_ENDPOINT=http://prometheus:9090/api/v1/otlp/v1/metrics \
+  docker compose --profile metrics up --build -d
+cd backend
+uv run python scripts/load.py --levels 1,6,12,24 --seconds 60 \
+  --prometheus http://127.0.0.1:9790 --sample-locks --out ../ops/load/offline.json
+uv run python scripts/chaos.py worker-killed --customers 12 --out ../ops/chaos/worker-killed.json
+uv run python scripts/chaos.py model-down --customers 6 --out ../ops/chaos/model-down.json
+```
+
+The chaos script puts the worker back with `docker compose up`, so it needs the same variables in its environment as the stack was started with. With a real model in `.env` and the three model variables left out of the first command:
+
+```
+uv run python scripts/load.py --levels 3,6,12 --seconds 60 \
+  --prometheus http://127.0.0.1:9790 --sample-locks --out ../ops/load/gpt-oss-120b.json
+uv run python scripts/chaos.py worker-killed --customers 6 --kill-after 4 \
+  --out ../ops/chaos/worker-killed-mid-turn.json
+```
+
+The reports of the runs above are in [ops/load](../ops/load) and [ops/chaos](../ops/chaos). The real-model runs behind this entry, two of the load, one of the chaos and the messages that checked the traces, cost USD 0.15 of the subscription's credit by the ledger.
+
 ## Planned entries
 
 - Phase 5: actual monthly cost of the deployed environment against the estimate.
-- Phase 6: throughput and p95 under load; result of the chaos scenario.

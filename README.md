@@ -6,7 +6,7 @@ This is a portfolio project. The two businesses in it are fictional. I am buildi
 
 ## Status
 
-Phase 4 of 6 is done: the agent runs on one machine with the controls that make its answers safe to send, an evaluation that says how well it does and stops a pull request that makes it worse, a knowledge base per business, and limits on what the models may cost.
+Five of the six phases are done, and the one that is not is the deployment. The agent runs on one machine with the controls that make its answers safe to send, an evaluation that says how well it does and stops a pull request that makes it worse, a knowledge base per business, limits on what the models may cost, and traces, metrics, a load test and rehearsed failures. Phase 5, the Azure environment and the WhatsApp number, is written and has not been applied.
 
 What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. Before a reply is sent, code checks it: every amount, time, date, duration and count has to come from a tool of that turn, the opening hours or the customer's own words; no discount is offered; no booking is announced that a tool did not make. A draft that fails goes back to the planner once, and a second failure hands the conversation to a person. Cancelling or moving a booking on short notice waits for the owner: the turn pauses, the customer is told, and the decision resumes it, in whichever worker receives it. The owner has a panel with the conversations, how each reply was made step by step, the approval queue, an editor for house rules that says which rules contradict the fixed policy, what the agent did and cost day by day, and the comparison of models. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
 
@@ -14,9 +14,11 @@ Knowledge and cost. What a business knows and its catalog does not, such as the 
 
 The evaluation. A golden set of 37 conversations in pt-BR runs through the real worker against a real model and is judged by code. A pull request that touches prompts, graph, tools, providers or checks runs it in CI, signed in to Azure with a federated identity and no stored key, and fails when two cases that pass in every run on main no longer do. Two pull requests show it: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) trims the prompt, which I expected to fail and which the gate lets through with the numbers; [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) adds an instruction that sounds prudent, and the gate stops it and names the four conversations it broke.
 
-Written and not yet run against the real thing. The WhatsApp channel is tested against the payloads in Meta's documentation and has not exchanged a message with Meta. The Terraform of the Azure environment in [infra](infra) passes validation and has never been applied. Every message produces one OpenTelemetry trace from the request to the reply, tested with an exporter in memory; the Phoenix container the compose file offers for looking at traces has not received one yet. Phase 5 ends with the environment applied for a measured window and destroyed, and Phase 6 with load and failure numbers; neither has happened.
+Operation. Every message produces one OpenTelemetry trace from the request to the reply, across the queue, and the API and the worker push metrics: how long each node took, tokens and cost per tenant, tool errors, blocked drafts, handoffs, how long a message waited for its turn, failed deliveries and dead letters. Neither carries what a customer wrote or is called. Two optional containers show them locally, `docker compose --profile traces` for Phoenix and `--profile metrics` for Prometheus. A script puts the stack under load and another breaks it on purpose and checks what the customers got; [docs/runbooks](docs/runbooks) says what to look at and do in four failures, two of them rehearsed that way.
 
-What does not exist. Metrics apart from what the panel and the database show, a load test, and a screen to edit the knowledge base, which comes from the seed. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
+Written and not yet run against the real thing. The WhatsApp channel is tested against the payloads in Meta's documentation and has not exchanged a message with Meta. The Terraform of the Azure environment in [infra](infra) passes validation and has never been applied, and so nothing here has run on Azure except the models. Phase 5 ends with the environment applied for a measured window and destroyed; that has not happened.
+
+What does not exist. A screen to edit the knowledge base, which comes from the seed. A dashboard or an alarm over the metrics, apart from one alert on dead letters written in the Terraform. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
 
 ## Run it
 
@@ -71,6 +73,10 @@ Retrieval, on 30 labelled questions: the entry that answers is among the three r
 
 Routing: sending only the classifier to the cheaper model takes 13% off the cost of a conversation on `gpt-5-mini`, with as many conversations passed. Sending every call to `gpt-oss-120b` halves it, which is why that is the default and the router is used for plans and spent budgets instead.
 
+Under load, on the same laptop and emulator: with the offline model one worker of six slots answers 5.7 conversations per second however many customers wait, with a p95 of 2.7 s at twelve customers at once and 4.2 s at twenty-four, and nobody unanswered. With `gpt-oss-120b` the limit is the deployment's 100 requests per minute: three customers at once are all answered with a median of 5.0 s and a p95 of 9.0 s, and at six the provider throttles, 17 are answered and 4 are handed to a person. The way the worker retries makes that worse than it has to be, and the entry says how.
+
+Failures made on purpose. A worker killed before its turns started: twelve of twelve customers answered once, the last 4.2 s after the restart. A worker killed in the middle of six turns: six of six answered once, and the last 173 s after the restart, because a dead turn's reservation of its conversation lasts three minutes. The model unreachable: six of six told after 37 s that a person takes over, and service back for the next customer when the model is.
+
 The reply checks, on a labelled set of 95 replies: 44 of 50 adversarial replies blocked (88.0%) and 3 of 45 benign replies blocked (6.7%). Half of the misses are a right value next to the wrong thing, which the check cannot see by design; the other half are a weakness of mine that the entry describes.
 
 ## Tests
@@ -79,7 +85,7 @@ The reply checks, on a labelled set of 95 replies: 44 of 50 adversarial replies 
 make check
 ```
 
-The backend has about 550 tests and they run against a real PostgreSQL in a container, including the checkpointer that keeps a turn paused for approval. The queue has one contract suite that runs against Azure Service Bus in Microsoft's emulator and against the in-memory queue the other tests use, so the stand-in cannot drift from the real thing. The other test doubles are at the external edges: the model provider and the channel. Tests cite the requirement they prove by its id in the specification, for example `TEN-2` for tenant isolation and `BOOK-3` for the constraint against double booking.
+The backend has about 600 tests and they run against a real PostgreSQL in a container, including the checkpointer that keeps a turn paused for approval. The queue has one contract suite that runs against Azure Service Bus in Microsoft's emulator and against the in-memory queue the other tests use, so the stand-in cannot drift from the real thing. The other test doubles are at the external edges: the model provider and the channel. Tests cite the requirement they prove by its id in the specification, for example `TEN-2` for tenant isolation and `BOOK-3` for the constraint against double booking.
 
 ## What I chose not to build and why
 

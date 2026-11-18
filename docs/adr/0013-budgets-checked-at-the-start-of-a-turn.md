@@ -30,7 +30,7 @@ Relying on the provider's limits alone. The deployment's tokens-per-minute quota
 
 The limits are checked when a turn starts and not before each call, so turns already running finish. A tenant can pass its budget, and the deployment its cap, by what the turns in flight cost: at most the worker's concurrency times the token limit of a turn.
 
-The row of the day is written by every model call of every tenant. It is one short update inside a transaction that was already open, and it is also a row that every worker contends for. The load test of Phase 6 is where I will see whether that matters.
+The row of the day is written by every model call of every tenant. It is one short update inside a transaction that was already open, and it is also a row that every worker contends for. The load test of Phase 6 looked: at up to 5.8 turns per second, a sample once a second found a session waiting for a lock in 7 of 260, never more than 3 at once. It is contention that exists and limits nothing at this size.
 
 The day of the cap is the database's day, which is UTC, not a day in São Paulo.
 
