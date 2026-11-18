@@ -99,7 +99,7 @@ The backend has about 640 tests and they run against a real PostgreSQL in a cont
 
 ## What I chose not to build and why
 
-A permanent public demo. The always-on environment is estimated at USD 85 per month and the project runs on a student subscription with USD 100 of credit. The deployment was applied for a window of five hours and destroyed, and a short video is to stand in for the link; it is not recorded yet. The estimate is in [docs/design/cost-estimate.md](docs/design/cost-estimate.md).
+A permanent public demo. The always-on environment is estimated at USD 85 per month and the project runs on a student subscription with USD 100 of credit. The deployment was applied for a window of five and a half hours and destroyed, and a short video is to stand in for the link; it is not recorded yet. The estimate is in [docs/design/cost-estimate.md](docs/design/cost-estimate.md).
 
 A model that judges the model. Every expectation of the golden set is checked by code, against the reply as the guardrail's extractor reads it and against the database. It keeps the evaluation cheap and repeatable, and it means the set only asks what code can verify.
 

@@ -327,6 +327,14 @@ What it says and does not say. The path works end to end against Meta: a signed 
 
 Reproduce. Not from this repository alone: it needs a Meta app, a test number and a phone. `infra/README.md` says where the three values go.
 
+## Phase 5, 2026-11-18: the window closed, and the number it still owes
+
+The environment existed from about 13:00 to 18:25 UTC, five hours and twenty-five minutes, and `terraform destroy` removed its 69 resources. What is left on the subscription is the model resource, which this configuration never owned, and the storage account of the Terraform state.
+
+What the window cost is not known yet. Cost Management answers for this subscription, and five hours after the first resource it had no row for the resource group. Its total for the model resource had not moved either, through a day of evaluation runs that the ledger of this repository prices at over a dollar, so what it shows is hours behind. By the estimate, which prices everything always on at USD 3.48 for 72 hours, this window is about USD 0.26, and that is the estimate and not a measurement. The measured figure goes here when Azure has it, and Phase 5 is tagged then.
+
+Left as it is on purpose. The WhatsApp account is still subscribed to the app, whose webhook now points at an address that no longer exists. The app's token was temporary and has expired.
+
 ## Planned entries
 
 - Phase 5: what the window cost against the estimate.
