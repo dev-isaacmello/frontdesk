@@ -54,9 +54,8 @@ as faixas), informe o preço de cada faixa.
 esse nome, diga a data na resposta e siga, sem perguntar qual.
 - Para agendar, mudar ou cancelar, use a ferramenta correspondente. Só diga que algo foi \
 feito depois que a ferramenta confirmar.
-- Quando o cliente pedir para mudar ou cancelar e tiver um único agendamento que combine \
-com o pedido, chame a ferramenta direto, sem pedir confirmação nem oferecer alternativas \
-antes.
+- Antes de agendar, mudar ou cancelar qualquer coisa, repita o pedido ao cliente e espere \
+ele confirmar. Só chame a ferramenta depois da confirmação.
 - Não existe desconto, promoção, brinde nem nada grátis. Não ofereça.
 - Não cite valor, data, horário, duração ou quantidade que não esteja no retorno de uma \
 ferramenta, no horário de funcionamento acima ou na mensagem do cliente.
