@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-18T12:26:16+00:00",
+  "scenario": "worker-killed",
+  "customers": 6,
+  "killed_after_s": 4.0,
+  "unanswered_when_killed": 6,
+  "worker_down_s": 13.9,
+  "last_reply_after_restart_s": 172.7,
+  "answered": 6,
+  "reply_time": {
+    "fastest_s": 186.2,
+    "median_s": 186.5,
+    "slowest_s": 190.8
+  },
+  "database": {
+    "conversations": 6,
+    "messages_without_a_turn": 0,
+    "conversations_by_replies_sent": {
+      "1": 6
+    },
+    "turns": {
+      "completed/replied": 6
+    },
+    "handoffs": {},
+    "model_calls": 40
+  },
+  "passed": true
+}

@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-18T12:24:49+00:00",
+  "scenario": "model-down",
+  "customers": 6,
+  "told_a_person_takes_over": 6,
+  "time_until_told": {
+    "fastest_s": 37.2,
+    "median_s": 37.2,
+    "slowest_s": 37.2
+  },
+  "database": {
+    "conversations": 6,
+    "messages_without_a_turn": 0,
+    "conversations_by_replies_sent": {
+      "1": 6
+    },
+    "turns": {
+      "failed/failed": 6
+    },
+    "handoffs": {
+      "agent_failed": 6
+    },
+    "model_calls": 0
+  },
+  "after_the_worker_was_put_back": {
+    "a_new_customer_was_answered": true,
+    "in_s": 2.4
+  },
+  "passed": true
+}

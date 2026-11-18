@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-18T12:40:12+00:00",
+  "levels": [
+    {
+      "customers": 3,
+      "seconds": 65.6,
+      "answered": 33,
+      "handed_to_a_person": 0,
+      "unanswered": 0,
+      "replies_per_second": 0.5,
+      "p50_ms": 5024,
+      "p95_ms": 9046,
+      "max_ms": 9632
+    },
+    {
+      "customers": 6,
+      "seconds": 98.5,
+      "answered": 17,
+      "handed_to_a_person": 4,
+      "unanswered": 0,
+      "replies_per_second": 0.17,
+      "p50_ms": 12449,
+      "p95_ms": 47357,
+      "max_ms": 47557
+    },
+    {
+      "customers": 12,
+      "seconds": 106.9,
+      "answered": 24,
+      "handed_to_a_person": 4,
+      "unanswered": 0,
+      "replies_per_second": 0.22,
+      "p50_ms": 24049,
+      "p95_ms": 71962,
+      "max_ms": 77434
+    }
+  ],
+  "lock_waits": {
+    "samples": 280,
+    "samples_with_a_waiter": 0,
+    "most_waiting_at_once": 0
+  },
+  "inside": {
+    "node_p95_ms": {
+      "plan": 2560,
+      "gate": 10,
+      "execute": 10,
+      "validate": 10,
+      "load_context": 27,
+      "classify": 1277,
+      "retrieve": 1217
+    },
+    "model_call_p95_ms": {
+      "classify": 1277,
+      "retrieve": 1217,
+      "plan": 2560
+    },
+    "queue_wait_p95_ms": {
+      "all": 9909
+    }
+  }
+}
