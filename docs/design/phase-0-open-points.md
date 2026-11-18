@@ -84,6 +84,14 @@ The gate fails on cases and not on a rate, against a baseline of three runs in w
 
 No model judges a model. Every expectation in the golden set is checked by code.
 
+## Decided in Phase 4
+
+The knowledge base is searched exactly under row-level security, with no approximate index (ADR 0012), and the threshold of the one embedding model the subscription offers was chosen on a labelled set.
+
+Budgets are checked at the start of a turn from the ledger, and the daily cap and the manual switch live in two tables with no tenant (ADR 0013).
+
+Routing by node is built and is not what the default configuration uses. On this subscription the cheapest model that can do the job is also the one that does it best, so every call goes to it; the router is what a tenant's plan and a spent budget act through. The measurement says what sending the classifier elsewhere saves.
+
 ## Decisions still open
 
 These were taken with the default below so that work could continue. Each can be reversed at the cost stated.

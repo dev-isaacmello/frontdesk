@@ -6,13 +6,15 @@ This is a portfolio project. The two businesses in it are fictional. I am buildi
 
 ## Status
 
-Phase 3 of 6 is done: the agent runs on one machine with the controls that make its answers safe to send, and with an evaluation that says how well it does and stops a pull request that makes it worse.
+Phase 4 of 6 is done: the agent runs on one machine with the controls that make its answers safe to send, an evaluation that says how well it does and stops a pull request that makes it worse, a knowledge base per business, and limits on what the models may cost.
 
-What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. Before a reply is sent, code checks it: every amount, time, date, duration and count has to come from a tool of that turn, the opening hours or the customer's own words; no discount is offered; no booking is announced that a tool did not make. A draft that fails goes back to the planner once, and a second failure hands the conversation to a person. Cancelling or moving a booking on short notice waits for the owner: the turn pauses, the customer is told, and the decision resumes it, in whichever worker receives it. The owner has a panel with the conversations, how each reply was made step by step, the approval queue, an editor for house rules that says which rules contradict the fixed policy, and the comparison of models. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
+What works now. A customer writes in a web chat. The message is authenticated, stored once and put on a queue. A worker runs one turn of an explicit agent graph that can list services, quote prices by time of day, check availability, book, reschedule and cancel. Before a reply is sent, code checks it: every amount, time, date, duration and count has to come from a tool of that turn, the opening hours or the customer's own words; no discount is offered; no booking is announced that a tool did not make. A draft that fails goes back to the planner once, and a second failure hands the conversation to a person. Cancelling or moving a booking on short notice waits for the owner: the turn pauses, the customer is told, and the decision resumes it, in whichever worker receives it. The owner has a panel with the conversations, how each reply was made step by step, the approval queue, an editor for house rules that says which rules contradict the fixed policy, what the agent did and cost day by day, and the comparison of models. Two tenants with different services, prices and hours live in one PostgreSQL, isolated by row-level security.
 
-The evaluation. A golden set of 32 conversations in pt-BR runs through the real worker against a real model and is judged by code. A pull request that touches prompts, graph, tools, providers or checks runs it in CI, signed in to Azure with a federated identity and no stored key, and fails when two cases that pass in every run on main no longer do. Two pull requests show it: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) trims the prompt, which I expected to fail and which the gate lets through with the numbers; [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) adds an instruction that sounds prudent, and the gate stops it and names the four conversations it broke.
+Knowledge and cost. What a business knows and its catalog does not, such as the address or how late a customer may arrive, is kept as short texts and retrieved into the turn by an exact vector search that row-level security confines to the tenant. Each business has a monthly budget for model calls: at the budget it is served by a cheaper model, past it by a person. The whole deployment has a daily cap, and a switch an operator can flip to stop every model call.
 
-What does not exist yet. WhatsApp itself, retrieval, cost routing, and the Azure deployment. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
+The evaluation. A golden set of 37 conversations in pt-BR runs through the real worker against a real model and is judged by code. A pull request that touches prompts, graph, tools, providers or checks runs it in CI, signed in to Azure with a federated identity and no stored key, and fails when two cases that pass in every run on main no longer do. Two pull requests show it: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) trims the prompt, which I expected to fail and which the gate lets through with the numbers; [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) adds an instruction that sounds prudent, and the gate stops it and names the four conversations it broke.
+
+What does not exist yet. WhatsApp itself, the Azure deployment, traces and load numbers. The knowledge base of the two businesses comes from the seed: the panel has no screen to edit it. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
 
 ## Run it
 
@@ -35,7 +37,7 @@ flowchart TD
     api -- store once --> pg[(PostgreSQL: inbox, outbox, row-level security)]
     api -- trigger --> queue[[Service Bus, one session per conversation]]
     queue --> worker[Worker]
-    worker --> turn[Turn graph: classify, plan, execute]
+    worker --> turn[Turn graph: classify, retrieve, plan, execute, validate]
     turn --> tools[Scheduling tools]
     turn --> model[Model provider port]
     tools --> pg
@@ -61,9 +63,13 @@ Every number here comes from [docs/medicoes.md](docs/medicoes.md), which has the
 
 Latency of the pipeline without a model, from message sent to reply on the stream, on one laptop against the Service Bus emulator: median 144 ms and p95 549 ms with one conversation at a time; median 1.77 s and p95 2.12 s with ten at a time, at 5.7 messages per second. This is the overhead around the model, and most of it is the queue: a session per conversation costs a connection handshake on every turn. The measurement entry explains it and ADR 0001 names the faster alternative I did not take. With `gpt-5-mini` on Azure OpenAI answering, the same path takes a median of 8.1 s and a p95 of 10.4 s for a price question, of which 6.4 s are three or four sequential model calls and 1.5 s is the wait for the customer to finish typing. One such turn costs a tenth of a cent.
 
-The golden set, three runs per model: `gpt-oss-120b` passes 31, 31 and 31 of 32 conversations at USD 0.0006 per conversation and 2.6 s of model time per turn; `gpt-5-mini` 31, 32 and 30 at USD 0.0013 and 8.5 s; `gpt-4.1-mini` 31, 28 and 28 at USD 0.0008 and 3.4 s. One change of prompt took `gpt-5-mini` from 28, 29 and 27 to those numbers. Three more models were deployed and cannot call tools the way the agent needs.
+The golden set, three runs per model: `gpt-oss-120b` passes 35, 36 and 35 of 37 conversations at USD 0.0006 per conversation and 2.6 s of model time per turn; `gpt-5-mini` 34, 34 and 37 at USD 0.0011 and 8.3 s; `gpt-4.1-mini` 34, 33 and 35 at USD 0.0006 and 3.3 s. One change of prompt had taken `gpt-5-mini` from 28, 29 and 27 of 32 to 31, 32 and 30. Three more models were deployed and cannot call tools the way the agent needs.
 
-The reply checks, on a labelled set of 86 replies: 40 of 46 adversarial replies blocked (87.0%) and 2 of 40 benign replies blocked (5.0%). Half of the misses are a right value next to the wrong thing, which the check cannot see by design; the other half are a weakness of mine that the entry describes.
+Retrieval, on 30 labelled questions: the entry that answers is among the three retrieved for 24 of 24, and first for 22. On the golden set it turns five conversations that could not be answered into five that are, with no loss I could measure on the other 32.
+
+Routing: sending only the classifier to the cheaper model takes 13% off the cost of a conversation on `gpt-5-mini`, with as many conversations passed. Sending every call to `gpt-oss-120b` halves it, which is why that is the default and the router is used for plans and spent budgets instead.
+
+The reply checks, on a labelled set of 95 replies: 44 of 50 adversarial replies blocked (88.0%) and 3 of 45 benign replies blocked (6.7%). Half of the misses are a right value next to the wrong thing, which the check cannot see by design; the other half are a weakness of mine that the entry describes.
 
 ## Tests
 
@@ -71,7 +77,7 @@ The reply checks, on a labelled set of 86 replies: 40 of 46 adversarial replies 
 make check
 ```
 
-The backend has about 500 tests and they run against a real PostgreSQL in a container, including the checkpointer that keeps a turn paused for approval. The queue has one contract suite that runs against Azure Service Bus in Microsoft's emulator and against the in-memory queue the other tests use, so the stand-in cannot drift from the real thing. The other test doubles are at the external edges: the model provider and the channel. Tests cite the requirement they prove by its id in the specification, for example `TEN-2` for tenant isolation and `BOOK-3` for the constraint against double booking.
+The backend has about 550 tests and they run against a real PostgreSQL in a container, including the checkpointer that keeps a turn paused for approval. The queue has one contract suite that runs against Azure Service Bus in Microsoft's emulator and against the in-memory queue the other tests use, so the stand-in cannot drift from the real thing. The other test doubles are at the external edges: the model provider and the channel. Tests cite the requirement they prove by its id in the specification, for example `TEN-2` for tenant isolation and `BOOK-3` for the constraint against double booking.
 
 ## What I chose not to build and why
 
@@ -86,6 +92,8 @@ LangChain model wrappers. The model is called through the vendor SDK behind one 
 A second cloud or a second model vendor. Everything runs on Azure, and the model comparison is across the models one student subscription can deploy. [ADR 0008](docs/adr/0008-one-cloud-azure.md) says why, including the part that was decided by the account and not by me.
 
 A private network. The demo reaches the database and the queue over public endpoints guarded by identity and a firewall, which is cheaper and weaker than a virtual network. [ADR 0010](docs/adr/0010-public-endpoints-behind-identity-and-a-firewall.md).
+
+An approximate vector index. With a few dozen texts per business an exact scan is fast, and it is the only search whose result cannot depend on another tenant's rows. [ADR 0012](docs/adr/0012-exact-vector-search-under-row-level-security.md) names the point where that stops being true.
 
 Token streaming to the customer. A reply is checked before it is sent, so nothing is shown that might be retracted.
 

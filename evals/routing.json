@@ -1,0 +1,64 @@
+{
+  "entries": [
+    {
+      "classify_model": "gpt-oss-120b",
+      "model": "gpt-5-mini",
+      "prompt_version": "dbad7b6803b2",
+      "runs": 3,
+      "last_run_at": "2026-11-18T03:57:12+00:00",
+      "cases": 37,
+      "passed_per_run": [
+        37,
+        36,
+        36
+      ],
+      "passed_mean": 36.3,
+      "cost_per_conversation_microusd": 995,
+      "model_ms_per_turn_p50": 6801,
+      "blocked_drafts_mean": 2,
+      "by_category": {
+        "approval": {
+          "cases": 2,
+          "passed_mean": 2
+        },
+        "arguments": {
+          "cases": 7,
+          "passed_mean": 6.7
+        },
+        "handoff": {
+          "cases": 2,
+          "passed_mean": 2
+        },
+        "injection": {
+          "cases": 4,
+          "passed_mean": 4
+        },
+        "knowledge": {
+          "cases": 5,
+          "passed_mean": 5
+        },
+        "numbers": {
+          "cases": 6,
+          "passed_mean": 5.7
+        },
+        "policy": {
+          "cases": 3,
+          "passed_mean": 3
+        },
+        "refusal": {
+          "cases": 3,
+          "passed_mean": 3
+        },
+        "tools": {
+          "cases": 5,
+          "passed_mean": 5
+        }
+      },
+      "always_failing": [],
+      "unstable": [
+        "arena-daytime-price",
+        "moving-a-booking"
+      ]
+    }
+  ]
+}

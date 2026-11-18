@@ -131,6 +131,8 @@ class EmbeddingProvider(Protocol):
 
 Embeddings are not routed per call. One embedding model is configured per deployment, its id is stored with every chunk, and changing it means ingesting again.
 
+As built in Phase 4 the protocol is smaller: `embed(texts)` returns the vectors and the tokens used, with no document and query kinds, because the one model here does not distinguish them. An embedder also carries the distance past which a chunk is not an answer, since distances of different models are not on one scale. There are two: an Azure OpenAI deployment, and an offline one that hashes words, which is what the stack and the tests run on with no credentials.
+
 ## Tools
 
 ```python

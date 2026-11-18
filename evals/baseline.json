@@ -1,7 +1,7 @@
 {
   "model": "gpt-oss-120b",
-  "prompt_version": "c9ecc03865a9",
-  "golden_version": "2026-11-18.1",
+  "prompt_version": "dbad7b6803b2",
+  "golden_version": "2026-11-18.2",
   "runs": 3,
   "cases": [
     {
@@ -91,12 +91,12 @@
     },
     {
       "id": "two-services-priced-by-the-tool",
-      "passed": false,
+      "passed": true,
       "failures": []
     },
     {
       "id": "discount-asked",
-      "passed": true,
+      "passed": false,
       "failures": []
     },
     {
@@ -163,13 +163,38 @@
       "id": "asks-for-a-person-in-other-words",
       "passed": true,
       "failures": []
+    },
+    {
+      "id": "knowledge-parking",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "knowledge-late-tolerance",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "knowledge-rain",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "knowledge-of-another-tenant",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "knowledge-not-in-the-base",
+      "passed": true,
+      "failures": []
     }
   ],
   "totals": {
-    "cases": 32,
-    "passed": 29,
-    "cost_per_conversation_microusd": 613,
-    "model_ms_per_turn_p50": 2638,
-    "blocked_drafts": 2
+    "cases": 37,
+    "passed": 34,
+    "cost_per_conversation_microusd": 567,
+    "model_ms_per_turn_p50": 2607,
+    "blocked_drafts": 1
   }
 }

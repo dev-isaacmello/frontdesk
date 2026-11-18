@@ -4,6 +4,8 @@ name: evals
 # compared with evals/baseline.json, the report is commented on the pull request, and the
 # job fails when two or more cases that pass on main no longer do.
 on:
+  # By hand, on main: the report goes to the summary of the run.
+  workflow_dispatch:
   pull_request:
     paths:
       - backend/src/frontdesk/agent/**
@@ -12,6 +14,7 @@ on:
       - backend/src/frontdesk/policy/**
       - backend/src/frontdesk/guardrail/**
       - backend/src/frontdesk/domain/**
+      - backend/src/frontdesk/seed.py
       - evals/golden/**
 
 permissions:
@@ -27,7 +30,9 @@ concurrency:
 jobs:
   golden-set:
     # A pull request from a fork gets no identity to call the model with.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -53,8 +58,14 @@ jobs:
         run: >
           uv run python scripts/compare_evals.py
           --run "$RUNNER_TEMP/run.json" --report "$RUNNER_TEMP/report.md"
-      - name: Comment the report on the pull request
+      - name: Write the report to the summary of the run
         if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/report.md" ]; then
+            cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Comment the report on the pull request
+        if: always() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}

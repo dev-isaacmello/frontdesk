@@ -118,6 +118,8 @@ async def run_case(env: Environment, case: Case, now: dt.datetime) -> CaseResult
         failures = await _failures(env, case, sender, turns, now)
     except Exception as error:
         # A case that cannot run is a failed case, with the reason, not a crashed suite.
+        # With the message of the error, unlike the application's logs: the conversations
+        # of the set are fictional, and the message is what named the cause the last time.
         log.exception("case_could_not_run", extra={"case": case.id})
         return CaseResult(case.id, case.category, False, [f"error: {type(error).__name__}"])
     return CaseResult(case.id, case.category, not failures, failures, turns)

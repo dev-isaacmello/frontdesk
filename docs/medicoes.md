@@ -127,8 +127,58 @@ uv run python scripts/summarize_evals.py
 uv run python scripts/make_baseline.py --model gpt-oss-120b
 ```
 
+## Phase 4, 2026-11-18: retrieval, what routing saves, and two defects the measuring found
+
+Retrieval, on a labelled set. 30 questions in pt-BR across the two tenants. 24 name the one entry of the knowledge base that answers them; 6 are answered by a tool or are a greeting, and the right retrieval for them is nothing. Each question goes through the same search a turn uses, three results at most, inside the tenant's transaction.
+
+- `text-embedding-3-small`, threshold 0.65: the right entry is first for 22 of 24 questions (0.917) and among the three for all 24 (1.000). Of the entries shown for those questions, 0.533 are the one that answers. For 2 of the 6 questions with no answer in the base nothing is retrieved (0.333).
+- The threshold is the lowest that finds every answer. At 0.55 the same model finds 19 of 24 with a precision of 0.760; at 0.75 it finds all with 0.358 and is never quiet.
+- The offline embedder, which hashes words and is what the stack runs on with no credentials: 17 of 24 (0.708), precision 0.773, quiet for 2 of 6. It misses what shares no word with its answer, such as "onde vocês ficam?" for the address.
+
+What retrieval does to the agent. The golden set gained five conversations that only the knowledge base can answer, one of them asking the barbershop for a fact that is true of the arena, and is now 37. The runner embeds and retrieves with the deployment that ships. On `gpt-oss-120b`, three runs each way, at the same commit:
+
+- With retrieval: 35, 36 and 35 of 37. The five new conversations pass in every run, and the 32 older ones pass 30, 31 and 30 times.
+- Without retrieval: 32, 31 and 32 of 37. One of the five new conversations passes, the one whose right answer is not knowing, and the 32 older ones pass 31, 30 and 31 times.
+- Cost per conversation is USD 0.00057 with and USD 0.00056 without. The median model time per turn goes from 2.1 s to 2.6 s, which is the embedding call and three more short texts in the prompt.
+
+So retrieval answers what it was added for and I could not measure a loss on what the agent already did. The second half of that is weaker than it reads: one case, booking in a single message, failed in all three runs with retrieval and in two of the three without.
+
+What routing saves. Three configurations of the same 37 conversations, three runs each, all with retrieval.
+
+- Every call on `gpt-5-mini`: 34, 34 and 37 of 37. USD 0.00114 per conversation. 8.3 s of model time per turn, median.
+- The classifier on `gpt-oss-120b` and the planner on `gpt-5-mini`: 37, 36 and 36 of 37. USD 0.00100 per conversation. 6.8 s.
+- Every call on `gpt-oss-120b`: 35, 36 and 35 of 37. USD 0.00057 per conversation. 2.6 s.
+
+Sending the classifier to the cheaper model takes 13% off the cost of a conversation and 1.5 s off a turn, with no fewer conversations passed. Sending everything to it halves the cost and takes two thirds off the time, and passes as many. The router is built and tested, and the default configuration does not use it by node: on this subscription the cheapest model that can call tools is also the one that does the job best, so every call goes to it. What the router is for here is the tenant's plan and a spent budget. `gpt-4.1-mini`, for the comparison in the panel: 34, 33 and 35 of 37, USD 0.00065, 3.3 s.
+
+Model and channel, separately. A turn on `gpt-oss-120b` costs USD 0.00055 in model calls. On the web chat the channel costs nothing and the message records zero. On WhatsApp a reply is one service message: the first 1,000 a month per number are free and each one after that is BRL 0.035, about USD 0.0068 on Meta's rate card of 2026-10-01, which is twelve times the model calls behind it. The adapter records the charge on each message when Meta reports the delivery as billable. No message was sent through it yet, so there is no measured channel cost: that belongs to the window of Phase 5.
+
+Two defects that only showed up under repetition.
+
+- The check for claimed actions read "até 10 minutos depois do horário marcado" as a booking nobody made. With the knowledge base the agent started saying that, and 4 of 10 runs of one question ended with a person being called. After the fix the same question passed 40 times of 40. The labelled set of replies grew by nine about the knowledge base and now measures 44 of 50 adversarial replies blocked (88.0%) and 3 of 45 benign replies blocked (6.7%). One of the three is new and stays: "ainda será atendido no horário marcado" is refused, because the same words are how a booking that was never made would be confirmed.
+- `gpt-oss-120b` returned a NUL byte inside a reply in 4 of about 330 conversations. PostgreSQL refuses that byte, the turn failed at its last write and was run again from the start. I could not reproduce it on demand: 54 further runs of the conversations it had hit produced none, so I know its rate and not its position in the text. Control characters are now removed from every model response, and from customer and owner input, where the same byte returned HTTP 500.
+
+One thing I saw and did not fix. In 4 of the 444 conversations of these runs a customer who should have had an answer got the fixed refusal. That is what the agent sends when the provider's content filter stops a request, and nothing in a run says which request it was. It needs a log line of its own, which is work for Phase 6.
+
+What it cost. The 26 runs now recorded under evals/runs cost USD 0.80 of the subscription's credit, for 917 turns. About USD 0.50 more went on runs that are not recorded: eight made before the two fixes and discarded, six made to catch the NUL byte, three without retrieval, and the repetitions above.
+
+What this does not say. The 30 retrieval questions and the knowledge base were written by the same person on the same day, the base has eight entries per tenant, and the threshold was chosen on the questions it is then reported on. Three runs per configuration separate a 13% difference in cost, which is arithmetic over token counts, far better than they separate 35 from 36 conversations passed. Cost per conversation is over 37 conversations here and over 32 in the Phase 3 entry, and the five added ones are short, so the two entries cannot be subtracted from each other. All figures are from one laptop calling one region.
+
+Reproduce. The first two commands need Docker and nothing else; the others need the key of the model resource in `.env` and cost a few cents each.
+
+```
+cd backend
+uv run python scripts/retrieval_rates.py
+uv run python scripts/guardrail_rates.py
+uv run python scripts/retrieval_rates.py --model text-embedding-3-small
+uv run python scripts/run_evals.py --model gpt-oss-120b
+uv run python scripts/run_evals.py --model gpt-oss-120b --embedding-model none --no-save
+uv run python scripts/run_evals.py --model gpt-5-mini
+uv run python scripts/run_evals.py --model gpt-5-mini --classify-model gpt-oss-120b
+uv run python scripts/summarize_evals.py
+```
+
 ## Planned entries
 
-- Phase 4: cost per conversation before and after routing, model and channel separately, with the quality metrics beside them; recall and precision at k for retrieval.
 - Phase 5: actual monthly cost of the deployed environment against the estimate.
 - Phase 6: throughput and p95 under load; result of the chaos scenario.

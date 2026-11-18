@@ -1,6 +1,6 @@
 # Agent graph
 
-Status: proposed in Phase 0 and built through Phase 2. The section "What was built differently" at the end lists where the code departs from this text; `retrieve` is the one node that does not exist yet.
+Status: proposed in Phase 0 and built through Phase 4. The section "What was built differently" at the end lists where the code departs from this text.
 
 The agent is an explicit LangGraph graph. LangGraph gives me three things I would otherwise write by hand: a typed state passed between nodes, a durable checkpoint after each step, and interrupt and resume for the owner's approval. The model calls inside the nodes go through my own provider port, not through a prebuilt agent.
 
@@ -128,3 +128,11 @@ A request the provider's content filter stops before any model reads it, which i
 The opening hours of the tenant are in the planner's prompt, and so are the values a reply may take from them. Without them the agent could not say when the business opens except by guessing from free slots.
 
 The handoff after failures is one failed turn, not two in a row.
+
+Added in Phase 4.
+
+`retrieve` runs for every in-scope turn, not only for some intents: there is no intent step to ask, and a search over a few rows costs less than deciding whether to make it. What it finds is appended to the planner's prompt, and the values in it join the list a reply is checked against. A word such as "gratuito" may be repeated when the owner wrote it in a retrieved text, and nowhere else.
+
+`load_context` reads the tenant's plan and its level against the monthly budget, and whether the deployment is open for model calls. A tenant past its budget, a reached daily cap and the operator's switch all end the turn in `handoff` before any model is called. The model of `classify` and of `plan` comes from the router (ADR 0013); with no routes configured every call goes to the one default model.
+
+Every model response is cleaned of control characters where the graph receives it. A model answered with a NUL byte inside a reply, which PostgreSQL refuses, and the turn failed at its last write.

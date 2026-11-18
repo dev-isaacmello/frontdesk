@@ -98,6 +98,14 @@ The tenant's policy is one column, `late_change_minutes`, not a document: the on
 
 `users` and `owner_sessions` have row-level security enabled and not forced, like `channel_accounts`, because signing in happens before a tenant is known. A test reads the catalog and fails if any other table with a tenant is missing the forced policy.
 
+## As built at the end of Phase 4
+
+`kb_chunks` holds a title, a short text, a `vector(1536)` and the name of the model that embedded it, unique per tenant and title, with the forced policy and no vector index (ADR 0012). There is no `kb_documents`: an entry is embedded whole.
+
+There is no `tenant_budgets` table. The plan and the monthly budget are two columns of `tenants`, and the level is computed from `model_calls` at the start of each turn (ADR 0013). `deployment_spend` has one row per day with what every tenant together spent, and `system_flags` has the switch that stops model calls. Neither has a tenant column, so neither has a policy: the application role may add to the first and only read the second. There is no `frontdesk_ops` role; the switch is flipped as the owner role.
+
+`messages` records what the channel charged for an outbound message, as an amount and its currency.
+
 ## What RLS covers and what it does not
 
 Every table above with a `tenant_id` has the same pair of policies, `USING` and `WITH CHECK`, on the tenant setting. Foreign keys always include `tenant_id` in the referenced key, so a row cannot point at a row of another tenant even if the application tries.
