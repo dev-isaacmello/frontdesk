@@ -13,6 +13,7 @@ sending it belong to the worker, so the graph knows nothing about channels.
 import datetime as dt
 import inspect
 import json
+import logging
 import operator
 import time
 from collections.abc import Awaitable, Callable
@@ -30,7 +31,7 @@ from langgraph.types import Command, interrupt
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel, ConfigDict
 
-from frontdesk import telemetry
+from frontdesk import metrics, telemetry
 from frontdesk.agent import intents, prompts
 from frontdesk.agent.review import review
 from frontdesk.agent.router import BudgetLevel, Routes
@@ -65,6 +66,8 @@ __all__ = [
     "resume_turn",
     "run_turn",
 ]
+
+log = logging.getLogger(__name__)
 
 # A backstop above the counted limits below, which are the ones that act: they end the
 # turn in handoff, where this one would raise.
@@ -266,7 +269,27 @@ async def _classify(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     except ModelFilteredError:
         # The provider would not let a model read the message, which is what it does with
         # a jailbreak attempt. Nothing in it is acted on: it gets the fixed refusal.
+        _filtered(state["turn"], "classify")
         return {"in_scope": False, "model_calls": 1}
+
+
+def _filtered(turn: TurnInput, node: str) -> None:
+    """Says which turn the provider's filter stopped.
+
+    The customer of that turn gets the fixed refusal, which is right for an attack and
+    wrong for an honest question the filter misread. Without this line the two look the
+    same from outside, and the second one cannot be found.
+    """
+    log.warning(
+        "model_filtered",
+        extra={
+            "tenant_id": str(turn.tenant_id),
+            "conversation_id": str(turn.conversation_id),
+            "turn_id": str(turn.turn_id),
+            "node": node,
+        },
+    )
+    metrics.model_filtered(turn.tenant_id, node)
 
 
 async def _classification(state: _State, deps: AgentDeps) -> _State:
@@ -363,8 +386,10 @@ async def _plan(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     try:
         response = await _call_model(deps, state["turn"], "plan", request)
     except ModelFilteredError:
+        _filtered(state["turn"], "plan")
         return {**(await _refuse(state)), "model_calls": 1}
     if response.stop_reason == "filtered":
+        _filtered(state["turn"], "plan")
         return {**(await _refuse(state)), **_spent(response)}
     said = Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
     if response.tool_calls:
@@ -384,6 +409,7 @@ async def _validate(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     )
     if not problems:
         return {"outcome": "replied", "reply": draft}
+    metrics.draft_blocked(state["turn"].tenant_id)
     if state.get("blocks", 0) >= 1:
         return {"blocks": 1, "handoff_reason": "guardrail_blocked"}
     if _spent_up(runtime.context.limits, state):
@@ -538,9 +564,11 @@ def _timed(name: str, node: _Node) -> _TimedNode:
         # runs again when the turn resumes, and that run is the one that counts.
         with telemetry.span(f"node {name}", {"frontdesk.turn_id": str(state["turn"].turn_id)}):
             update = await (node(state, runtime) if wants_runtime else node(state))
+        seconds = time.perf_counter() - started
+        metrics.node_ran(state["turn"].tenant_id, name, seconds)
         step = {
             "node": name,
-            "duration_ms": round((time.perf_counter() - started) * 1000),
+            "duration_ms": round(seconds * 1000),
             "detail": _detail(name, state, update),
         }
         return {**update, "steps": [step]}

@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable
 from contextlib import suppress
 
-from frontdesk import logs
+from frontdesk import logs, metrics
 from frontdesk.domain.conversations import ConversationBusyError
 from frontdesk.providers.port import ModelRejectedError
 from frontdesk.queue.port import Lease, TriggerQueue
@@ -119,9 +119,13 @@ async def handle_conversation(
                     **logs.failure(error),
                 },
             )
+            metrics.trigger_failed(error)
             # A request the provider rejects as it is will be rejected again: no retry.
             if delivery.attempt >= MAX_ATTEMPTS or isinstance(error, ModelRejectedError):
                 await _give_up(deps, trigger)
+                if delivery.attempt >= MAX_ATTEMPTS:
+                    # Giving this delivery back is what moves it to the dead-letter queue.
+                    metrics.trigger_dead_lettered()
             else:
                 # The conversation stays leased during the pause, so nothing of it runs
                 # out of order and a dependency that is down is not hit in a tight loop.

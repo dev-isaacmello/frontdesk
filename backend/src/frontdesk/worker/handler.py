@@ -9,7 +9,7 @@ from uuid import UUID
 
 from opentelemetry.trace import SpanKind
 
-from frontdesk import telemetry
+from frontdesk import metrics, telemetry
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps, resume_turn, run_turn
 from frontdesk.agent.turn import TurnInput, TurnResult
@@ -59,9 +59,14 @@ async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
         await _resume_decided(deps, trigger)
         await _let_a_burst_finish(deps, trigger)
         async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+            # Read before the turn takes the messages. A turn that is being retried has
+            # taken them already, so its wait is not counted a second time.
+            waiting_since = await conversations.oldest_waiting(session, trigger.conversation_id)
             turn = await conversations.open_turn(session, trigger.conversation_id, deps.clock())
 
         if turn is not None:
+            if waiting_since is not None:
+                metrics.waited(trigger.tenant_id, (turn.now - waiting_since).total_seconds())
             await _run(deps, trigger, turn, run_turn(deps.agent, turn))
 
         await _deliver(deps, trigger)
@@ -113,6 +118,8 @@ async def _run(
             )
             if resumed_approval is not None:
                 await approvals.mark_resumed(session, resumed_approval, deps.clock())
+        # Counted once its result is written: a turn whose write is refused runs again.
+        metrics.turn_ended(trigger.tenant_id, result.outcome, result.handoff_reason)
     except Exception:
         # The retry must not wait for the lease of the attempt that just failed.
         async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
@@ -135,9 +142,11 @@ async def _let_a_burst_finish(deps: WorkerDeps, trigger: Trigger) -> None:
 async def give_up(deps: WorkerDeps, trigger: Trigger) -> None:
     """Stops retrying a conversation whose turn keeps failing and hands it to a person."""
     async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
-        await conversations.give_up(
+        handed_over = await conversations.give_up(
             session, trigger.conversation_id, prompts.HANDOFF_NOTICE, deps.clock()
         )
+    if handed_over:
+        metrics.turn_ended(trigger.tenant_id, "failed", "agent_failed")
     await _deliver(deps, trigger)
 
 

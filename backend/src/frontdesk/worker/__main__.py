@@ -4,7 +4,7 @@ import asyncio
 import logging
 import signal
 
-from frontdesk import logs, telemetry
+from frontdesk import logs, metrics, telemetry
 from frontdesk.agent import checkpoints
 from frontdesk.config import Settings
 from frontdesk.wiring import queue_from, worker_from
@@ -17,6 +17,7 @@ async def main() -> None:
     logs.configure()
     settings = Settings()
     telemetry.configure("frontdesk-worker", settings.otlp_endpoint)
+    metrics.configure("frontdesk-worker", settings.otlp_metrics_endpoint)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGINT, signal.SIGTERM):

@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from frontdesk import metrics
 from frontdesk.db.models import ModelCall, Turn
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.budget import add_to_today
@@ -117,6 +118,16 @@ class ModelLedger:
                     price_table_version=self._prices.version,
                 )
             )
+        # After the commit: a call that is not in the ledger is not in the metrics either.
+        metrics.model_called(
+            tenant_id,
+            node=node,
+            model=model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cost_microusd=cost,
+            seconds=latency_ms / 1000,
+        )
 
 
 async def turn_costs(session: AsyncSession, conversation_id: UUID) -> list[ModelCallCost]:

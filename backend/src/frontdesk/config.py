@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     """Where spans are sent, as a full OTLP HTTP URL ending in /v1/traces. Unset, no span
     leaves the process."""
 
+    otlp_metrics_endpoint: str | None = None
+    """Where metrics are pushed, as a full OTLP HTTP URL ending in /v1/metrics. Unset, none
+    is kept."""
+
     azure_openai_endpoint: str | None = None
     """The resource endpoint, for example https://<resource>.openai.azure.com."""
 

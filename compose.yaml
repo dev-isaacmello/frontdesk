@@ -29,6 +29,9 @@ x-backend: &backend
     # Where spans go. Unset, none leaves the process; `--profile traces` starts Phoenix,
     # and FRONTDESK_OTLP_ENDPOINT=http://phoenix:6006/v1/traces points at it.
     FRONTDESK_OTLP_ENDPOINT: ${FRONTDESK_OTLP_ENDPOINT:-}
+    # Where metrics go. Unset, none is kept; `--profile metrics` starts Prometheus, and
+    # FRONTDESK_OTLP_METRICS_ENDPOINT=http://prometheus:9090/api/v1/otlp/v1/metrics points at it.
+    FRONTDESK_OTLP_METRICS_ENDPOINT: ${FRONTDESK_OTLP_METRICS_ENDPOINT:-}
     FRONTDESK_AZURE_OPENAI_ENDPOINT: ${FRONTDESK_AZURE_OPENAI_ENDPOINT:-}
     FRONTDESK_AZURE_OPENAI_API_KEY: ${FRONTDESK_AZURE_OPENAI_API_KEY:-}
 
@@ -160,6 +163,27 @@ services:
     ports:
       - "127.0.0.1:${FRONTDESK_PHOENIX_PORT:-6006}:6006"
 
+  # The metrics, to query while developing or after a load run (ADR 0015). Not part of the
+  # default stack either:
+  #
+  #   FRONTDESK_OTLP_METRICS_ENDPOINT=http://prometheus:9090/api/v1/otlp/v1/metrics \
+  #     docker compose --profile metrics up
+  #
+  # and then http://localhost:9790. It scrapes nothing: the API and the worker push to it.
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: ["metrics"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./ops/local/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus:/prometheus
+    ports:
+      - "127.0.0.1:${FRONTDESK_PROMETHEUS_PORT:-9790}:9090"
+
 volumes:
   postgres:
   phoenix:
+  prometheus:

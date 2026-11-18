@@ -1,0 +1,8 @@
+# Prometheus as the place the local stack pushes its metrics to (ADR 0015). There is no
+# scrape job: the API and the worker send OTLP to /api/v1/otlp/v1/metrics.
+
+storage:
+  tsdb:
+    # A pushed sample can arrive after a newer one. The value Prometheus's own OTLP guide
+    # suggests.
+    out_of_order_time_window: 30m

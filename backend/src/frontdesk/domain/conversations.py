@@ -343,6 +343,18 @@ async def release_lease(session: AsyncSession, conversation_id: UUID, epoch: int
     return held is not None
 
 
+async def oldest_waiting(session: AsyncSession, conversation_id: UUID) -> datetime | None:
+    """When the first customer message still waiting for a turn was sent."""
+    oldest: datetime | None = await session.scalar(
+        select(func.min(Message.occurred_at)).where(
+            Message.conversation_id == conversation_id,
+            Message.direction == "in",
+            Message.turn_id.is_(None),
+        )
+    )
+    return oldest
+
+
 async def newest_waiting(session: AsyncSession, conversation_id: UUID) -> datetime | None:
     """When the latest customer message still waiting for a turn was sent."""
     newest: datetime | None = await session.scalar(
@@ -355,17 +367,17 @@ async def newest_waiting(session: AsyncSession, conversation_id: UUID) -> dateti
     return newest
 
 
-async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now: datetime) -> None:
+async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now: datetime) -> bool:
     """Ends the attempt to answer: the conversation goes to a person and the customer is told.
 
     Called when a turn failed through all its retries. Does nothing when a person is
-    already in charge, so calling it again is safe.
+    already in charge, so calling it again is safe. Returns whether it handed it over.
     """
     conversation = await session.scalar(
         select(Conversation).where(Conversation.id == conversation_id).with_for_update()
     )
     if conversation is None or conversation.mode == "handoff":
-        return
+        return False
     turn = await session.scalar(
         select(Turn).where(Turn.conversation_id == conversation_id, Turn.status == "running")
     )
@@ -411,6 +423,7 @@ async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now
             opened_at=now,
         )
     )
+    return True
 
 
 async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[OutboundMessage]:

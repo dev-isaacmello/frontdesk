@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
-from frontdesk import telemetry
+from frontdesk import metrics, telemetry
 from frontdesk.agent.turn import TurnInput
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.guardrail import Fact
@@ -48,7 +48,14 @@ async def run_tool_call(
             "gen_ai.tool.call.id": call.id,
         },
     ) as execution:
-        outcome = await _run(sessions, turn, call, sequence, timezone)
+        # A name the model made up is text from the model, and does not become a label.
+        tool = call.name if call.name in TOOLS else "unknown"
+        try:
+            outcome = await _run(sessions, turn, call, sequence, timezone)
+        except Exception as error:
+            metrics.tool_called(turn.tenant_id, tool, type(error).__qualname__)
+            raise
+        metrics.tool_called(turn.tenant_id, tool, outcome.refused)
         execution.set_attribute("frontdesk.tool.effect", outcome.effect or "none")
         if outcome.refused:
             # A call the model got wrong is an error of the call, with no exception.
