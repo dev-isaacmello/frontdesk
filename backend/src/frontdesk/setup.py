@@ -18,9 +18,11 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import make_url
 
 from frontdesk import logs
-from frontdesk.db.bootstrap import BootstrapPlan, bootstrap
+from frontdesk.agent import checkpoints
+from frontdesk.db.bootstrap import APP_ROLE, BootstrapPlan, bootstrap
 from frontdesk.db.session import create_engine, create_session_factory
 from frontdesk.seed import seed
 
@@ -43,6 +45,12 @@ def main() -> None:
     # env.py reads the owner URL from the environment.
     command.upgrade(Config(Path(env.get("FRONTDESK_ALEMBIC_INI", "alembic.ini"))), "head")
     log.info("schema_migrated")
+
+    owner_dsn = make_url(env["FRONTDESK_MIGRATIONS_DATABASE_URL"]).set(drivername="postgresql")
+    asyncio.run(
+        checkpoints.create_tables(owner_dsn.render_as_string(hide_password=False), APP_ROLE)
+    )
+    log.info("checkpoint_tables_ready")
 
     asyncio.run(_seed(env["FRONTDESK_DATABASE_URL"]))
     log.info("seed_applied")

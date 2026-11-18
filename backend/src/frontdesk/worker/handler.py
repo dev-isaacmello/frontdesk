@@ -5,12 +5,14 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from frontdesk.agent import prompts
-from frontdesk.agent.graph import AgentDeps, run_turn
+from frontdesk.agent.graph import AgentDeps, resume_turn, run_turn
+from frontdesk.agent.turn import TurnInput, TurnResult
 from frontdesk.channels.port import ChannelSender
 from frontdesk.db.session import SessionFactory, tenant_transaction
-from frontdesk.domain import conversations
+from frontdesk.domain import approvals, conversations
 from frontdesk.domain.customers import Channel
 from frontdesk.queue.triggers import Trigger
 
@@ -35,41 +37,75 @@ _MAX_QUIET_WAITS = 5
 
 
 async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
-    """Runs the turn the conversation is waiting for, then sends what is in its outbox.
+    """Does what the conversation is waiting for, then sends what is in its outbox.
 
-    Safe to call again for the same trigger: a finished turn is not run twice, and a
-    reply that was written but not sent is sent without calling the model.
+    First a turn that was paused for the owner and now has a decision, then the turn over
+    the customer messages that are waiting. Safe to call again for the same trigger: a
+    finished turn is not run twice, and a reply that was written but not sent is sent
+    without calling the model.
     """
+    await _resume_decided(deps, trigger)
     await _let_a_burst_finish(deps, trigger)
     async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
         turn = await conversations.open_turn(session, trigger.conversation_id, deps.clock())
 
     if turn is not None:
-        try:
-            result = await run_turn(deps.agent, turn)
-            log.info(
-                "turn_finished",
-                extra={
-                    "tenant_id": str(trigger.tenant_id),
-                    "conversation_id": str(trigger.conversation_id),
-                    "outcome": result.outcome,
-                    "handoff_reason": result.handoff_reason,
-                    "blocked_drafts": result.blocks,
-                },
-            )
-            async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
-                await conversations.close_turn(
-                    session, trigger.conversation_id, turn, result, deps.clock()
-                )
-        except Exception:
-            # The retry must not wait for the lease of the attempt that just failed.
-            async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
-                await conversations.release_lease(
-                    session, trigger.conversation_id, turn.lease_epoch
-                )
-            raise
+        await _run(deps, trigger, turn, run_turn(deps.agent, turn))
 
     await _deliver(deps, trigger)
+
+
+async def _resume_decided(deps: WorkerDeps, trigger: Trigger) -> None:
+    async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+        decided = await approvals.next_decided(session, trigger.conversation_id)
+        if decided is None:
+            return
+        turn = await conversations.reopen_turn(
+            session, trigger.conversation_id, decided.turn_id, deps.clock()
+        )
+    if turn is None:
+        return
+    await _run(
+        deps,
+        trigger,
+        turn,
+        resume_turn(deps.agent, turn, approved=decided.approved),
+        resumed_approval=decided.approval_id,
+    )
+
+
+async def _run(
+    deps: WorkerDeps,
+    trigger: Trigger,
+    turn: TurnInput,
+    running: Awaitable[TurnResult],
+    *,
+    resumed_approval: UUID | None = None,
+) -> None:
+    """Awaits a turn and writes its result under the lease the turn was opened with."""
+    try:
+        result = await running
+        log.info(
+            "turn_finished",
+            extra={
+                "tenant_id": str(trigger.tenant_id),
+                "conversation_id": str(trigger.conversation_id),
+                "outcome": result.outcome,
+                "handoff_reason": result.handoff_reason,
+                "blocked_drafts": result.blocks,
+            },
+        )
+        async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+            await conversations.close_turn(
+                session, trigger.conversation_id, turn, result, deps.clock()
+            )
+            if resumed_approval is not None:
+                await approvals.mark_resumed(session, resumed_approval, deps.clock())
+    except Exception:
+        # The retry must not wait for the lease of the attempt that just failed.
+        async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+            await conversations.release_lease(session, trigger.conversation_id, turn.lease_epoch)
+        raise
 
 
 async def _let_a_burst_finish(deps: WorkerDeps, trigger: Trigger) -> None:

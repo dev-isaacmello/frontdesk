@@ -45,6 +45,8 @@ class TenantSeed:
     opens: time
     closes: time
     services: tuple[ServiceSeed, ...]
+    late_change_minutes: int | None = None
+    """Notice below which cancelling or moving a booking needs the owner's approval."""
 
     @property
     def id(self) -> UUID:
@@ -72,6 +74,7 @@ BARBERSHOP = TenantSeed(
         ServiceSeed("Barba", 20, ((_MIDNIGHT, 3000),), ("Caio", "Renan")),
         ServiceSeed("Corte e barba", 50, ((_MIDNIGHT, 7000),), ("Caio", "Renan")),
     ),
+    late_change_minutes=180,
 )
 
 ARENA = TenantSeed(
@@ -106,8 +109,12 @@ TENANTS = (BARBERSHOP, ARENA)
 async def seed(factory: SessionFactory) -> None:
     for tenant in TENANTS:
         async with tenant_transaction(factory, tenant.id) as session:
-            if await session.get(Tenant, tenant.id) is None:
+            row = await session.get(Tenant, tenant.id)
+            if row is None:
                 await _add_tenant(session, tenant)
+            else:
+                # Settings added after a database was first seeded reach it here.
+                row.late_change_minutes = tenant.late_change_minutes
 
 
 async def _add_tenant(session: AsyncSession, tenant: TenantSeed) -> None:
@@ -119,6 +126,7 @@ async def _add_tenant(session: AsyncSession, tenant: TenantSeed) -> None:
             name=tenant.name,
             timezone=tenant.timezone,
             slot_minutes=tenant.slot_minutes,
+            late_change_minutes=tenant.late_change_minutes,
         )
     )
     await session.flush()

@@ -25,6 +25,7 @@ class Tenant(Base):
     name: Mapped[str]
     timezone: Mapped[str]
     slot_minutes: Mapped[int]
+    late_change_minutes: Mapped[int | None]
 
 
 class Resource(Base):
@@ -160,6 +161,24 @@ class Handoff(Base):
     reason: Mapped[str]
     opened_at: Mapped[datetime]
     resolved_at: Mapped[datetime | None]
+
+
+class ApprovalRequest(Base):
+    """A tool call that waits for the owner before it runs."""
+
+    __tablename__ = "approval_requests"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    conversation_id: Mapped[UUID]
+    turn_id: Mapped[UUID]
+    rule: Mapped[str]
+    tool: Mapped[str]
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(server_default="pending")
+    requested_at: Mapped[datetime]
+    decided_at: Mapped[datetime | None]
+    resumed_at: Mapped[datetime | None]
 
 
 class HouseRules(Base):

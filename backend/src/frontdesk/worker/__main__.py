@@ -5,6 +5,7 @@ import logging
 import signal
 
 from frontdesk import logs
+from frontdesk.agent import checkpoints
 from frontdesk.config import Settings
 from frontdesk.wiring import queue_from, worker_from
 from frontdesk.worker.loop import run
@@ -25,7 +26,11 @@ async def main() -> None:
     queue = queue_from(settings, retries=0)
     log.info("worker_started", extra={"concurrency": settings.worker_concurrency})
     try:
-        await run(worker_from(settings), queue, stop, concurrency=settings.worker_concurrency)
+        # Turns that stop for the owner's approval are kept in PostgreSQL, so the worker
+        # that gets the decision can be another one.
+        async with checkpoints.pool(settings.database_dsn) as paused_turns:
+            deps = worker_from(settings, checkpoints.saver(paused_turns))
+            await run(deps, queue, stop, concurrency=settings.worker_concurrency)
     finally:
         await queue.close()
     log.info("worker_stopped")

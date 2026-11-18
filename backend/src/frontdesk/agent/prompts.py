@@ -12,6 +12,11 @@ HANDOFF_NOTICE = (
     "Ela responde por aqui assim que puder."
 )
 
+WAIT_NOTICE = (
+    "Esse pedido precisa da confirmação do responsável. Já avisei a equipe e volto a "
+    "falar com você por aqui assim que tiver a resposta."
+)
+
 CLASSIFY = """\
 Você classifica mensagens recebidas pelo atendimento de {tenant}.
 

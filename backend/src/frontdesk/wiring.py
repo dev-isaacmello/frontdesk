@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from openai import AsyncOpenAI
 
 from frontdesk.agent.graph import AgentDeps
@@ -77,7 +78,8 @@ def api_from(settings: Settings) -> FastAPI:
     )
 
 
-def worker_from(settings: Settings) -> WorkerDeps:
+def worker_from(settings: Settings, checkpointer: BaseCheckpointSaver[str]) -> WorkerDeps:
+    """The worker's dependencies. The checkpointer's pool is opened and closed by the caller."""
     sessions = sessions_from(settings)
     return WorkerDeps(
         sessions=sessions,
@@ -86,6 +88,7 @@ def worker_from(settings: Settings) -> WorkerDeps:
             provider=provider_from(settings),
             model=settings.model,
             ledger=ModelLedger(sessions, load_price_table()),
+            checkpointer=checkpointer,
         ),
         senders={"webchat": WebchatSender(sessions)},
         clock=now,

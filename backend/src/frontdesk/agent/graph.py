@@ -1,6 +1,7 @@
 """The turn as an explicit graph (docs/design/agent-graph.md).
 
-    load_context -> classify -> plan <-> execute
+    load_context -> classify -> plan -> gate -> execute -> plan
+               \\           \\      \\       \\-> await_approval (interrupt) -> execute or plan
                \\           \\      \\-> validate -> done, back to plan once, or handoff
                 \\           \\-> refuse
                  \\-> handoff
@@ -10,13 +11,19 @@ sending it belong to the worker, so the graph knows nothing about channels.
 """
 
 import datetime as dt
+import json
 import operator
-from dataclasses import dataclass
-from typing import Annotated, Literal, TypedDict
+from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Annotated, Any, Literal, TypedDict
 from zoneinfo import ZoneInfo
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
+from langgraph.types import Command, interrupt
 from pydantic import BaseModel, ConfigDict
 
 from frontdesk.agent import intents, prompts
@@ -24,6 +31,8 @@ from frontdesk.agent.review import review
 from frontdesk.agent.tool_runner import run_tool_call
 from frontdesk.agent.turn import HandoffReason, HistoryMessage, TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
+from frontdesk.domain import approvals
+from frontdesk.domain.approvals import PendingApproval
 from frontdesk.domain.clock import to_local
 from frontdesk.domain.rules import active_rules
 from frontdesk.domain.tenants import load_tenant, opening_hours, timezone_of
@@ -38,7 +47,15 @@ from frontdesk.providers.port import (
 )
 from frontdesk.tools.registry import TOOL_SPECS
 
-__all__ = ["AgentDeps", "HistoryMessage", "TurnInput", "TurnLimits", "TurnResult", "run_turn"]
+__all__ = [
+    "AgentDeps",
+    "HistoryMessage",
+    "TurnInput",
+    "TurnLimits",
+    "TurnResult",
+    "resume_turn",
+    "run_turn",
+]
 
 # A backstop above the counted limits below, which are the ones that act: they end the
 # turn in handoff, where this one would raise.
@@ -62,6 +79,9 @@ class AgentDeps:
     model: str
     ledger: ModelLedger
     limits: TurnLimits = TurnLimits()
+    checkpointer: BaseCheckpointSaver[str] = field(default_factory=InMemorySaver)
+    """Where a turn that stops for approval is kept. In memory unless one is given, which
+    is enough for a turn that starts and ends in the same process."""
 
 
 class Classification(BaseModel):
@@ -89,16 +109,42 @@ class _State(TypedDict, total=False):
     effects: Annotated[list[str], operator.add]
     draft: str
     blocks: Annotated[int, operator.add]
+    gate: Literal["allow", "wait", "deny"]
+    approval: dict[str, Any]
     outcome: Literal["replied", "refused", "handoff"]
     reply: str
 
 
 async def run_turn(deps: AgentDeps, turn: TurnInput) -> TurnResult:
-    final = await _GRAPH.ainvoke(
-        {"turn": turn, "transcript": []},
-        config={"recursion_limit": _RECURSION_LIMIT},
+    # A retried turn starts over. Whatever an earlier attempt left on its thread is dropped
+    # first, so that the graph is never handed new input on top of a paused run.
+    await deps.checkpointer.adelete_thread(str(turn.turn_id))
+    return await _run(deps, turn, {"turn": turn, "transcript": []})
+
+
+async def resume_turn(deps: AgentDeps, turn: TurnInput, *, approved: bool) -> TurnResult:
+    """Takes up a turn that stopped for approval, with the owner's decision."""
+    return await _run(deps, turn, Command(resume=approved))
+
+
+async def _run(deps: AgentDeps, turn: TurnInput, graph_input: _State | Command[Any]) -> TurnResult:
+    thread = str(turn.turn_id)
+    final = await _compiled(deps.checkpointer).ainvoke(
+        graph_input,
+        config={"recursion_limit": _RECURSION_LIMIT, "configurable": {"thread_id": thread}},
         context=deps,
+        # One checkpoint, when the run stops. A turn that crashes is run again from its
+        # start, with the same idempotency keys, so nothing in between has to be kept.
+        durability="exit",
     )
+    waiting = final.get("__interrupt__")
+    if waiting:
+        return TurnResult(
+            outcome="awaiting_approval",
+            reply=prompts.WAIT_NOTICE,
+            approval=PendingApproval(**waiting[0].value),
+        )
+    await deps.checkpointer.adelete_thread(thread)
     return TurnResult(
         outcome=final["outcome"],
         reply=final["reply"],
@@ -231,15 +277,58 @@ async def _validate(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     }
 
 
+async def _gate(state: _State, runtime: Runtime[AgentDeps]) -> _State:
+    """Decides whether what the planner asked for may run now, has to wait, or may not."""
+    turn = state["turn"]
+    calls = state["transcript"][-1].tool_calls
+    async with tenant_transaction(runtime.context.sessions, turn.tenant_id) as session:
+        tenant = await load_tenant(session, turn.tenant_id)
+        for call in calls:
+            rule = await approvals.sensitive_rule(
+                session, tenant, turn.customer_id, call.name, call.arguments, turn.now
+            )
+            if rule is None:
+                continue
+            if await approvals.has_pending(session, turn.conversation_id):
+                return _denied(runtime.context.limits, state, "approval_already_pending")
+            waiting = {"rule": rule, "tool": call.name, "arguments": call.arguments}
+            # The rule only fires for a confirmed booking of this customer, so the turn
+            # knows the booking exists, which a reply may say whatever the owner decides.
+            return {"gate": "wait", "approval": waiting, "effects": ["listed"]}
+    return {"gate": "allow"}
+
+
+async def _await_approval(state: _State, runtime: Runtime[AgentDeps]) -> _State:
+    # Alone in its node on purpose: when the graph resumes, the node that called the
+    # interrupt runs again from its first line, so nothing else may live here.
+    approved = interrupt(state["approval"])
+    if approved:
+        return {"gate": "allow"}
+    return _denied(runtime.context.limits, state, "rejected_by_owner")
+
+
+def _denied(limits: TurnLimits, state: _State, reason: str) -> _State:
+    """Answers every call of the batch with the refusal, for the planner to explain."""
+    refusals = [
+        Message(role="tool", tool_call_id=call.id, content=json.dumps({"error": reason}))
+        for call in state["transcript"][-1].tool_calls
+    ]
+    update: _State = {"gate": "deny", "transcript": refusals}
+    if _spent_up(limits, state):
+        update["handoff_reason"] = "turn_limit"
+    return update
+
+
 async def _execute(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     transcript = state["transcript"]
+    asked = next(message for message in reversed(transcript) if message.tool_calls)
     already_run = sum(1 for message in transcript if message.role == "tool")
     timezone = ZoneInfo(state["timezone"])
     outcomes = [
         await run_tool_call(
             runtime.context.sessions, state["turn"], call, already_run + index, timezone
         )
-        for index, call in enumerate(transcript[-1].tool_calls)
+        for index, call in enumerate(asked.tool_calls)
     ]
     update: _State = {
         "transcript": [outcome.message for outcome in outcomes],
@@ -292,10 +381,16 @@ def _after_execute(state: _State) -> Literal["plan", "handoff"]:
     return "handoff" if "handoff_reason" in state else "plan"
 
 
-def _after_plan(state: _State) -> Literal["execute", "validate", "done"]:
+def _after_plan(state: _State) -> Literal["gate", "validate", "done"]:
     if "outcome" in state:
         return "done"
-    return "execute" if state["transcript"][-1].tool_calls else "validate"
+    return "gate" if state["transcript"][-1].tool_calls else "validate"
+
+
+def _after_gate(state: _State) -> Literal["execute", "await_approval", "plan", "handoff"]:
+    if "handoff_reason" in state:
+        return "handoff"
+    return {"allow": "execute", "wait": "await_approval", "deny": "plan"}[state["gate"]]  # type: ignore[return-value]
 
 
 def _after_validate(state: _State) -> Literal["done", "plan", "handoff"]:
@@ -316,6 +411,8 @@ def _build() -> StateGraph[_State, AgentDeps]:
     graph.add_node("refuse", _refuse)
     graph.add_node("handoff", _handoff)
     graph.add_node("plan", _plan)
+    graph.add_node("gate", _gate)
+    graph.add_node("await_approval", _await_approval)
     graph.add_node("execute", _execute)
     graph.add_node("validate", _validate)
     graph.add_edge(START, "load_context")
@@ -324,8 +421,10 @@ def _build() -> StateGraph[_State, AgentDeps]:
     graph.add_edge("refuse", END)
     graph.add_edge("handoff", END)
     graph.add_conditional_edges(
-        "plan", _after_plan, {"execute": "execute", "validate": "validate", "done": END}
+        "plan", _after_plan, {"gate": "gate", "validate": "validate", "done": END}
     )
+    graph.add_conditional_edges("gate", _after_gate)
+    graph.add_conditional_edges("await_approval", _after_gate)
     graph.add_conditional_edges(
         "validate", _after_validate, {"done": END, "plan": "plan", "handoff": "handoff"}
     )
@@ -333,4 +432,6 @@ def _build() -> StateGraph[_State, AgentDeps]:
     return graph
 
 
-_GRAPH = _build().compile()
+@lru_cache(maxsize=16)
+def _compiled(checkpointer: BaseCheckpointSaver[str]) -> CompiledStateGraph[_State, AgentDeps]:
+    return _build().compile(checkpointer=checkpointer)

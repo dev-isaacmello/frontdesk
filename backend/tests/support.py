@@ -1,12 +1,13 @@
 """Helpers shared by tests that need a conversation to exist."""
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from sqlalchemy import text
 
 from frontdesk.agent.graph import AgentDeps
@@ -105,18 +106,19 @@ WANTS_HUMAN = says('{"in_scope": true, "wants_human": true}')
 
 
 def scripted_worker(
-    sessions: SessionFactory, sender: RecordingSender, *script: ModelResponse
+    sessions: SessionFactory,
+    sender: RecordingSender,
+    *script: ModelResponse | Exception,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> tuple[WorkerDeps, ScriptedProvider]:
     """A worker whose model answers from a script, and the script to inspect afterwards."""
     provider = ScriptedProvider(script)
+    agent = AgentDeps(
+        sessions=sessions, provider=provider, model="scripted", ledger=ModelLedger(sessions, PRICES)
+    )
     deps = WorkerDeps(
         sessions=sessions,
-        agent=AgentDeps(
-            sessions=sessions,
-            provider=provider,
-            model="scripted",
-            ledger=ModelLedger(sessions, PRICES),
-        ),
+        agent=replace(agent, checkpointer=checkpointer) if checkpointer else agent,
         senders={"webchat": sender},
         clock=lambda: NOW,
     )

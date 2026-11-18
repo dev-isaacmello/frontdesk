@@ -1,6 +1,6 @@
 """Shared fixtures: one real PostgreSQL per test session, migrated and seeded."""
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,9 +8,11 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy.ext.asyncio import AsyncEngine
 from testcontainers.community.postgres import PostgresContainer
 
+from frontdesk.agent import checkpoints
 from frontdesk.db.bootstrap import APP_ROLE, OWNER_ROLE, BootstrapPlan, bootstrap
 from frontdesk.db.session import SessionFactory, create_engine, create_session_factory
 from frontdesk.seed import seed
@@ -20,6 +22,7 @@ POSTGRES_IMAGE = "pgvector/pgvector:pg18"
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PLAN = BootstrapPlan(database="frontdesk", owner_password="owner", app_password="app")
 WRITTEN_BY_TESTS = (
+    "approval_requests",
     "rule_findings",
     "house_rules",
     "handoffs",
@@ -51,6 +54,13 @@ class Database:
     def app_dsn(self) -> str:
         return (
             f"postgresql://{APP_ROLE}:{PLAN.app_password}@{self.host}:{self.port}/{PLAN.database}"
+        )
+
+    @property
+    def owner_dsn(self) -> str:
+        return (
+            f"postgresql://{OWNER_ROLE}:{PLAN.owner_password}"
+            f"@{self.host}:{self.port}/{PLAN.database}"
         )
 
     @property
@@ -109,6 +119,23 @@ def clean_slate(database: Database) -> None:
         ).fetchone()
         if tables and tables[0]:
             connection.execute(f"truncate {tables[0]} cascade")
+
+
+@pytest.fixture(scope="session")
+async def checkpoints_pool(database: Database) -> AsyncIterator[checkpoints.Pool]:
+    """The checkpoint tables, created as the setup does, and a pool of the runtime role."""
+    await checkpoints.create_tables(database.owner_dsn, APP_ROLE)
+    pool = checkpoints.pool(database.app_dsn)
+    await pool.open()
+    yield pool
+    await pool.close()
+
+
+@pytest.fixture
+def checkpointer(checkpoints_pool: checkpoints.Pool) -> Callable[[], AsyncPostgresSaver]:
+    """Makes a checkpointer on PostgreSQL. Two of them share nothing but the database,
+    which is how a test stands for two worker processes."""
+    return lambda: checkpoints.saver(checkpoints_pool)
 
 
 @pytest.fixture

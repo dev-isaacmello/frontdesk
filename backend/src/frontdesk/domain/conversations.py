@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from frontdesk.agent.turn import HistoryMessage, TurnInput, TurnResult
 from frontdesk.channels.port import OutboundMessage
-from frontdesk.db.models import ChannelAccount as ChannelAccountRow
 from frontdesk.db.models import (
+    ApprovalRequest,
     Conversation,
     CustomerIdentity,
     Handoff,
@@ -20,6 +20,8 @@ from frontdesk.db.models import (
     Message,
     Turn,
 )
+from frontdesk.db.models import ChannelAccount as ChannelAccountRow
+from frontdesk.domain import approvals
 from frontdesk.domain.customers import Channel, ChannelIdentity, identify_customer
 
 _HISTORY_WINDOW = 20
@@ -186,16 +188,41 @@ async def open_turn(
         if in_handoff:
             return None
 
+    return await _take(session, conversation, turn, now)
+
+
+async def reopen_turn(
+    session: AsyncSession, conversation_id: UUID, turn_id: UUID, now: datetime
+) -> TurnInput | None:
+    """Takes up a turn that stopped for approval, under a new lease. None if it is gone."""
+    conversation = await session.scalar(
+        select(Conversation).where(Conversation.id == conversation_id).with_for_update()
+    )
+    turn = await session.scalar(
+        select(Turn).where(Turn.id == turn_id, Turn.status == "awaiting_approval")
+    )
+    if conversation is None or turn is None:
+        return None
+    return await _take(session, conversation, turn, now)
+
+
+async def _take(
+    session: AsyncSession, conversation: Conversation, turn: Turn, now: datetime
+) -> TurnInput:
+    """Leases the conversation to the caller and describes the turn it is to run."""
     conversation.lease_epoch += 1
     conversation.lease_until = now + _LEASE
-    lines = await _lines(session, conversation_id)
+    lines = await _lines(session, conversation.id)
     return TurnInput(
         tenant_id=conversation.tenant_id,
+        conversation_id=conversation.id,
         customer_id=conversation.customer_id,
         turn_id=turn.id,
         lease_epoch=conversation.lease_epoch,
         now=turn.started_at,
-        messages=[line.body for line in lines if line.turn_id == turn.id],
+        messages=[
+            line.body for line in lines if line.turn_id == turn.id and line.direction == "in"
+        ],
         history=[
             HistoryMessage(author=cast("Literal['customer', 'agent']", line.author), text=line.body)
             for line in lines
@@ -207,12 +234,17 @@ async def open_turn(
 async def close_turn(
     session: AsyncSession, conversation_id: UUID, turn: TurnInput, result: TurnResult, now: datetime
 ) -> None:
-    """Completes the turn and puts its reply in the outbox, as one change.
+    """Ends this run of the turn and puts what it says in the outbox, as one change.
 
+    A turn that stops for approval is not finished: its wait notice goes out, the request
+    is recorded, and the turn stays open for the owner's decision.
     Refused with StaleLeaseError when another worker took the conversation over meanwhile.
     """
     if not await release_lease(session, conversation_id, turn.lease_epoch):
         raise StaleLeaseError
+    already_said = await session.scalar(
+        select(func.count()).where(Message.turn_id == turn.turn_id, Message.direction == "out")
+    )
     await session.execute(
         insert(Message)
         .values(
@@ -223,10 +255,22 @@ async def close_turn(
             body=result.reply,
             occurred_at=now,
             turn_id=turn.turn_id,
-            seq=0,
+            # The reply of a resumed turn comes after the wait notice it already sent.
+            seq=already_said or 0,
         )
         .on_conflict_do_nothing()
     )
+    if result.outcome == "awaiting_approval":
+        assert result.approval is not None
+        await session.execute(
+            update(Turn)
+            .where(Turn.id == turn.turn_id)
+            .values(status="awaiting_approval", outcome="awaiting_approval")
+        )
+        await approvals.request(
+            session, turn.tenant_id, conversation_id, turn.turn_id, result.approval, now
+        )
+        return
     await session.execute(
         update(Turn)
         .where(Turn.id == turn.turn_id)
@@ -286,6 +330,23 @@ async def give_up(session: AsyncSession, conversation_id: UUID, notice: str, now
     )
     if turn is not None:
         turn.status, turn.outcome, turn.finished_at = "failed", "failed", now
+    # A paused turn whose decision could not be acted on is closed as well, so that the
+    # decision stops waking the worker.
+    await session.execute(
+        update(Turn)
+        .where(
+            Turn.conversation_id == conversation_id,
+            Turn.status == "awaiting_approval",
+            Turn.id.in_(
+                select(ApprovalRequest.turn_id).where(
+                    ApprovalRequest.conversation_id == conversation_id,
+                    ApprovalRequest.status != "pending",
+                    ApprovalRequest.resumed_at.is_(None),
+                )
+            ),
+        )
+        .values(status="failed", outcome="failed", finished_at=now)
+    )
     session.add(
         Message(
             tenant_id=conversation.tenant_id,
