@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     """What the knowledge base is embedded and searched with: the offline word hashing, or
     the name of an embedding deployment on the same Azure OpenAI resource."""
 
+    otlp_endpoint: str | None = None
+    """Where spans are sent, as a full OTLP HTTP URL ending in /v1/traces. Unset, no span
+    leaves the process."""
+
     azure_openai_endpoint: str | None = None
     """The resource endpoint, for example https://<resource>.openai.azure.com."""
 

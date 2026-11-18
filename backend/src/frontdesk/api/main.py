@@ -2,11 +2,13 @@
 
 from fastapi import FastAPI
 
-from frontdesk import logs
+from frontdesk import logs, telemetry
 from frontdesk.config import Settings
 from frontdesk.wiring import api_from
 
 
 def create() -> FastAPI:
     logs.configure()
-    return api_from(Settings())
+    settings = Settings()
+    telemetry.configure("frontdesk-api", settings.otlp_endpoint)
+    return api_from(settings)

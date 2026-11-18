@@ -93,6 +93,7 @@ class ServiceBusTriggerQueue:
             {
                 "tenant_id": str(trigger.tenant_id),
                 "conversation_id": str(trigger.conversation_id),
+                "traceparent": trigger.traceparent,
             }
         )
         message = ServiceBusMessage(
@@ -132,7 +133,9 @@ class ServiceBusTriggerQueue:
 def _parse(message: ServiceBusReceivedMessage) -> Trigger:
     fields = json.loads(str(message))
     return Trigger(
-        tenant_id=UUID(fields["tenant_id"]), conversation_id=UUID(fields["conversation_id"])
+        tenant_id=UUID(fields["tenant_id"]),
+        conversation_id=UUID(fields["conversation_id"]),
+        traceparent=fields.get("traceparent"),
     )
 
 

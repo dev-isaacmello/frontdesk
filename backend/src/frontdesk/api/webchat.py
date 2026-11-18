@@ -6,8 +6,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from opentelemetry.trace import SpanKind
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from frontdesk import telemetry
 from frontdesk.api.deps import ApiDeps
 from frontdesk.channels.signing import SIGNATURE_HEADER, TIMESTAMP_HEADER, verify
 from frontdesk.channels.webchat import ServerEvent, conversation_events
@@ -86,18 +88,29 @@ def webchat_router(deps: ApiDeps) -> APIRouter:
             sent_at=deps.clock(),
             raw=message.model_dump(),
         )
-        async with tenant_transaction(deps.sessions, account.tenant_id) as session:
-            receipt = await receive(session, account, inbound)
+        with telemetry.span(
+            "receive webchat",
+            {"frontdesk.tenant_id": str(account.tenant_id)},
+            kind=SpanKind.SERVER,
+        ) as arrival:
+            async with tenant_transaction(deps.sessions, account.tenant_id) as session:
+                receipt = await receive(session, account, inbound)
+            arrival.set_attribute("frontdesk.conversation_id", str(receipt.conversation_id))
+            arrival.set_attribute("frontdesk.duplicate", receipt.duplicate)
 
-        # Also on a redelivery of a message that still waits: the first trigger may have
-        # been lost between the commit above and the queue.
-        if receipt.pending:
-            await deps.queue.send(
-                Trigger(tenant_id=account.tenant_id, conversation_id=receipt.conversation_id),
-                # Scoped by account: two tenants may see the same session and message ids,
-                # and queue deduplication must not let one silence the other.
-                deduplication_id=f"{account.id}:{inbound.provider_message_id}",
-            )
+            # Also on a redelivery of a message that still waits: the first trigger may
+            # have been lost between the commit above and the queue.
+            if receipt.pending:
+                await deps.queue.send(
+                    Trigger(
+                        tenant_id=account.tenant_id,
+                        conversation_id=receipt.conversation_id,
+                        traceparent=telemetry.carried(),
+                    ),
+                    # Scoped by account: two tenants may see the same session and message
+                    # ids, and queue deduplication must not let one silence the other.
+                    deduplication_id=f"{account.id}:{inbound.provider_message_id}",
+                )
         return Accepted(conversation_id=receipt.conversation_id, duplicate=receipt.duplicate)
 
     @router.get("/conversations/{conversation_id}/events")

@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from opentelemetry.trace import SpanKind
+
+from frontdesk import telemetry
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps, resume_turn, run_turn
 from frontdesk.agent.turn import TurnInput, TurnResult
@@ -44,15 +47,24 @@ async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
     finished turn is not run twice, and a reply that was written but not sent is sent
     without calling the model.
     """
-    await _resume_decided(deps, trigger)
-    await _let_a_burst_finish(deps, trigger)
-    async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
-        turn = await conversations.open_turn(session, trigger.conversation_id, deps.clock())
+    with telemetry.span(
+        "handle conversation",
+        {
+            "frontdesk.tenant_id": str(trigger.tenant_id),
+            "frontdesk.conversation_id": str(trigger.conversation_id),
+        },
+        parent=trigger.traceparent,
+        kind=SpanKind.CONSUMER,
+    ):
+        await _resume_decided(deps, trigger)
+        await _let_a_burst_finish(deps, trigger)
+        async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+            turn = await conversations.open_turn(session, trigger.conversation_id, deps.clock())
 
-    if turn is not None:
-        await _run(deps, trigger, turn, run_turn(deps.agent, turn))
+        if turn is not None:
+            await _run(deps, trigger, turn, run_turn(deps.agent, turn))
 
-    await _deliver(deps, trigger)
+        await _deliver(deps, trigger)
 
 
 async def _resume_decided(deps: WorkerDeps, trigger: Trigger) -> None:
@@ -134,6 +146,7 @@ async def _deliver(deps: WorkerDeps, trigger: Trigger) -> None:
         outbox = await conversations.undelivered(session, trigger.conversation_id)
 
     for message in outbox:
-        receipt = await deps.senders[message.channel].send(message)
+        with telemetry.span(f"send {message.channel}", kind=SpanKind.CLIENT):
+            receipt = await deps.senders[message.channel].send(message)
         async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
             await conversations.mark_sent(session, message.message_id, receipt, deps.clock())

@@ -11,3 +11,5 @@ from uuid import UUID
 class Trigger:
     tenant_id: UUID
     conversation_id: UUID
+    traceparent: str | None = None
+    """The trace the message arrived in, so that the worker's spans join it."""

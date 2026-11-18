@@ -27,8 +27,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
+from opentelemetry.trace import SpanKind
 from pydantic import BaseModel, ConfigDict
 
+from frontdesk import telemetry
 from frontdesk.agent import intents, prompts
 from frontdesk.agent.review import review
 from frontdesk.agent.router import BudgetLevel, Routes
@@ -226,7 +228,20 @@ async def _call_model(
     What comes back is text from outside like any other: a model has answered with a NUL
     byte in a reply, which the database refuses. It is cleaned here, for every provider.
     """
-    response = await deps.provider.complete(request)
+    with telemetry.span(
+        f"chat {request.model}",
+        {
+            "gen_ai.operation.name": "chat",
+            "gen_ai.provider.name": deps.provider.name,
+            "gen_ai.request.model": request.model,
+        },
+        kind=SpanKind.CLIENT,
+    ) as call:
+        response = await deps.provider.complete(request)
+        call.set_attribute("gen_ai.response.model", response.model)
+        call.set_attribute("gen_ai.usage.input_tokens", response.usage.input_tokens)
+        call.set_attribute("gen_ai.usage.output_tokens", response.usage.output_tokens)
+        call.set_attribute("gen_ai.response.finish_reasons", [response.stop_reason])
     await deps.ledger.record(
         tenant_id=turn.tenant_id,
         turn_id=turn.turn_id,
@@ -287,7 +302,17 @@ async def _retrieve(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     if deps.embedder is None:
         return {"knowledge": ""}
     try:
-        embedded = await deps.embedder.embed(["\n".join(turn.messages)])
+        with telemetry.span(
+            f"embeddings {deps.embedder.model}",
+            {
+                "gen_ai.operation.name": "embeddings",
+                "gen_ai.provider.name": deps.embedder.name,
+                "gen_ai.request.model": deps.embedder.model,
+            },
+            kind=SpanKind.CLIENT,
+        ) as call:
+            embedded = await deps.embedder.embed(["\n".join(turn.messages)])
+            call.set_attribute("gen_ai.usage.input_tokens", embedded.usage.input_tokens)
     except ModelError:
         return {"knowledge": ""}
     await deps.ledger.record_usage(
@@ -511,7 +536,8 @@ def _timed(name: str, node: _Node) -> _TimedNode:
         started = time.perf_counter()
         # An interrupt leaves through here as an exception and records nothing: the node
         # runs again when the turn resumes, and that run is the one that counts.
-        update = await (node(state, runtime) if wants_runtime else node(state))
+        with telemetry.span(f"node {name}", {"frontdesk.turn_id": str(state["turn"].turn_id)}):
+            update = await (node(state, runtime) if wants_runtime else node(state))
         step = {
             "node": name,
             "duration_ms": round((time.perf_counter() - started) * 1000),
