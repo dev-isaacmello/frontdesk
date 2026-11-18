@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from frontdesk.db.models import ModelCall, Turn
 from frontdesk.db.session import SessionFactory, tenant_transaction
+from frontdesk.domain.budget import add_to_today
 from frontdesk.providers.port import ModelResponse, Usage
 
 
@@ -96,7 +97,10 @@ class ModelLedger:
         latency_ms: int,
     ) -> None:
         """The same for a call that is not a completion, such as an embedding."""
+        cost = self._prices.cost_microusd(model, usage)
         async with tenant_transaction(self._sessions, tenant_id) as session:
+            # The deployment's total for the day, which its daily cap is checked against.
+            await add_to_today(session, cost)
             session.add(
                 ModelCall(
                     tenant_id=tenant_id,
@@ -109,7 +113,7 @@ class ModelLedger:
                     cache_read_tokens=usage.cache_read_tokens,
                     cache_write_tokens=usage.cache_write_tokens,
                     latency_ms=latency_ms,
-                    cost_microusd=self._prices.cost_microusd(model, usage),
+                    cost_microusd=cost,
                     price_table_version=self._prices.version,
                 )
             )

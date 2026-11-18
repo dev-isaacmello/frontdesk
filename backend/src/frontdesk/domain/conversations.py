@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from frontdesk.agent.turn import HistoryMessage, TurnInput, TurnResult
-from frontdesk.channels.port import OutboundMessage
+from frontdesk.channels.port import OutboundMessage, SendReceipt
 from frontdesk.db.models import (
     ApprovalRequest,
     Conversation,
@@ -433,12 +433,18 @@ async def undelivered(session: AsyncSession, conversation_id: UUID) -> list[Outb
 
 
 async def mark_sent(
-    session: AsyncSession, message_id: UUID, provider_message_id: str | None, now: datetime
+    session: AsyncSession, message_id: UUID, receipt: SendReceipt, now: datetime
 ) -> None:
+    """Records that a message went out and what the channel charged for it."""
     await session.execute(
         update(Message)
         .where(Message.id == message_id)
-        .values(sent_at=now, provider_message_id=provider_message_id)
+        .values(
+            sent_at=now,
+            provider_message_id=receipt.provider_message_id,
+            channel_cost_micros=receipt.cost.micros,
+            channel_cost_currency=receipt.cost.currency,
+        )
     )
 
 

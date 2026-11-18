@@ -11,6 +11,7 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from frontdesk.agent.graph import AgentDeps
+from frontdesk.agent.router import Routes
 from frontdesk.api.app import ApiDeps, create_app
 from frontdesk.channels.webchat import PostgresNotifications, WebchatSender
 from frontdesk.config import Settings
@@ -136,6 +137,17 @@ def worker_from(settings: Settings, checkpointer: BaseCheckpointSaver[str]) -> W
             model=settings.model,
             ledger=ModelLedger(sessions, load_price_table()),
             embedder=embedder_from(settings),
+            routes=Routes(
+                default=settings.model,
+                classify=settings.model_classify,
+                pro=settings.model_pro,
+                economy=settings.model_economy,
+            ),
+            daily_cap_microusd=(
+                None
+                if settings.daily_cap_usd is None
+                else round(settings.daily_cap_usd * 1_000_000)
+            ),
             checkpointer=checkpointer,
         ),
         senders={"webchat": WebchatSender(sessions)},

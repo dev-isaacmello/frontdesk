@@ -122,6 +122,17 @@ def clean_slate(database: Database) -> None:
         ).fetchone()
         if tables and tables[0]:
             connection.execute(f"truncate {tables[0]} cascade")
+        # What belongs to no tenant: the deployment's spend of the day and its switch.
+        connection.execute(
+            """
+            do $$ begin
+                if to_regclass('deployment_spend') is not null then
+                    truncate deployment_spend;
+                    update system_flags set enabled = true;
+                end if;
+            end $$
+            """
+        )
 
 
 @pytest.fixture(scope="session")

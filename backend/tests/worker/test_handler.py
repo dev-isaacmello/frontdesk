@@ -229,3 +229,22 @@ async def test_a_failing_provider_leaves_the_message_waiting(sessions: SessionFa
 
     assert sender.sent == []
     assert await lines(sessions, receipt.conversation_id) == [("customer", "oi")]
+
+
+async def test_cst_4_a_sent_message_records_what_its_channel_charged(
+    sessions: SessionFactory,
+) -> None:
+    deps, _ = worker(sessions, RecordingSender(), IN_SCOPE, says("Oi, Ana!"))
+    receipt = await say(sessions, "oi", "m1")
+
+    await handle(deps, trigger_of(receipt))
+
+    async with tenant_transaction(sessions, BARBERSHOP.id) as session:
+        charged = await session.execute(
+            text(
+                "select channel_cost_micros, channel_cost_currency from messages "
+                "where direction = 'out'"
+            )
+        )
+    # The web chat charges nothing, and says so instead of leaving the cost unknown.
+    assert charged.all() == [(0, "USD")]

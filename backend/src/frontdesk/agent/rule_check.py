@@ -4,6 +4,7 @@ This is a convenience for the owner and nothing else. A rule that offers a disco
 when a reply is validated, whether or not this check noticed it (ADR 0007).
 """
 
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -11,8 +12,11 @@ from pydantic import BaseModel, ConfigDict
 
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps
+from frontdesk.agent.router import Routes
 from frontdesk.db.session import tenant_transaction
+from frontdesk.domain.budget import ModelCallsClosedError, may_call_model
 from frontdesk.domain.rules import Finding, active_rules, replace_findings
+from frontdesk.domain.tenants import load_tenant
 from frontdesk.policy.output import discount_offers
 from frontdesk.providers.port import Message, ModelRequest
 
@@ -35,7 +39,8 @@ async def check_rules(
 ) -> list[Finding]:
     """Checks the version in force, stores its findings and returns them.
 
-    Without the model, only what the code itself finds in the rules is reported.
+    Without the model, only what the code itself finds in the rules is reported. Raises
+    ModelCallsClosedError when the model part was asked for and may not run.
     """
     async with tenant_transaction(deps.sessions, tenant_id) as session:
         rules = await active_rules(session, tenant_id)
@@ -67,9 +72,17 @@ def _by_the_words(body: str) -> list[Finding]:
 
 
 async def _by_the_model(deps: AgentDeps, tenant_id: UUID, body: str) -> list[_Reported]:
+    # The review is a model call like any other: it stops with the tenant's budget, the
+    # deployment's cap for the day and the operator's switch.
+    async with tenant_transaction(deps.sessions, tenant_id) as session:
+        tenant = await load_tenant(session, tenant_id)
+        level = await may_call_model(session, tenant, datetime.now(UTC), deps.daily_cap_microusd)
+    if level is None:
+        raise ModelCallsClosedError
+    routes = deps.routes or Routes(default=deps.model)
     response = await deps.provider.complete(
         ModelRequest(
-            model=deps.model,
+            model=routes.model_for("classify", tenant.plan, level),
             system=prompts.RULE_CHECK,
             messages=(Message(role="user", content=body),),
             output_schema=_Report.model_json_schema(),

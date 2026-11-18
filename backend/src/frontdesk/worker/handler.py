@@ -136,6 +136,4 @@ async def _deliver(deps: WorkerDeps, trigger: Trigger) -> None:
     for message in outbox:
         receipt = await deps.senders[message.channel].send(message)
         async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
-            await conversations.mark_sent(
-                session, message.message_id, receipt.provider_message_id, deps.clock()
-            )
+            await conversations.mark_sent(session, message.message_id, receipt, deps.clock())

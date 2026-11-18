@@ -1,5 +1,7 @@
 """Configuration read from the environment."""
 
+from decimal import Decimal
+
 import pytest
 
 from frontdesk.config import Settings
@@ -34,3 +36,16 @@ def test_a_variable_set_to_nothing_counts_as_unset(monkeypatch: pytest.MonkeyPat
     assert settings.azure_openai_endpoint is None
     assert settings.azure_openai_api_key is None
     assert settings.servicebus_namespace is None
+
+
+def test_cst_5_the_daily_cap_is_exact_money_and_can_be_lifted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name, value in REQUIRED.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("FRONTDESK_DAILY_CAP_USD", "0.10")
+    capped = Settings()
+    monkeypatch.setenv("FRONTDESK_DAILY_CAP_USD", "")
+    lifted = Settings()
+
+    assert (capped.daily_cap_usd, lifted.daily_cap_usd) == (Decimal("0.10"), None)

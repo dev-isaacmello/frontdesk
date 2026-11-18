@@ -1,5 +1,6 @@
 """Configuration, read from the environment. See .env.example for every variable."""
 
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import SecretStr
@@ -39,6 +40,19 @@ class Settings(BaseSettings):
     model_provider: Literal["offline", "azure_openai"] = "offline"
     model: str = "offline"
     """The model to call: the deployment name on Azure OpenAI. It is also the price table key."""
+
+    model_classify: str | None = None
+    """A model for the classifier alone. The default model when unset."""
+
+    model_pro: str | None = None
+    """The planner's model for tenants on the pro plan. The default model when unset."""
+
+    model_economy: str | None = None
+    """The model of a tenant that reached its monthly budget. The default model when unset."""
+
+    daily_cap_usd: Decimal | None = Decimal(2)
+    """What every tenant together may spend on models in a day. Past it, turns go to a
+    person until the next day. Unset means no cap."""
 
     embedding_model: str = "offline"
     """What the knowledge base is embedded and searched with: the offline word hashing, or

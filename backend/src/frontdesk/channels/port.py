@@ -18,8 +18,18 @@ class OutboundMessage:
 
 
 @dataclass(frozen=True)
+class ChannelCost:
+    """What a channel charged for one message, in millionths of the currency it charges in."""
+
+    micros: int = 0
+    currency: str = "USD"
+
+
+@dataclass(frozen=True)
 class SendReceipt:
     provider_message_id: str | None
+    cost: ChannelCost = ChannelCost()
+    """The web chat costs nothing. A paid channel reports its price here."""
 
 
 class ChannelSender(Protocol):

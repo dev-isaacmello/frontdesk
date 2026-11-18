@@ -31,10 +31,11 @@ from pydantic import BaseModel, ConfigDict
 
 from frontdesk.agent import intents, prompts
 from frontdesk.agent.review import review
+from frontdesk.agent.router import BudgetLevel, Routes
 from frontdesk.agent.tool_runner import run_tool_call
 from frontdesk.agent.turn import HandoffReason, HistoryMessage, Step, TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
-from frontdesk.domain import approvals, knowledge
+from frontdesk.domain import approvals, budget, knowledge
 from frontdesk.domain.approvals import PendingApproval
 from frontdesk.domain.clock import to_local
 from frontdesk.domain.rules import active_rules
@@ -84,6 +85,10 @@ class AgentDeps:
     model: str
     ledger: ModelLedger
     limits: TurnLimits = TurnLimits()
+    routes: Routes | None = None
+    """Which model answers which node. Without routes every call goes to `model`."""
+    daily_cap_microusd: int | None = None
+    """What every tenant together may spend on models in a day. Past it, turns go to a person."""
     embedder: Embedder | None = None
     """What the customer's message is embedded with to search the knowledge base. Without
     one the turn runs with no retrieval."""
@@ -121,6 +126,8 @@ class _State(TypedDict, total=False):
     approval: dict[str, Any]
     steps: Annotated[list[dict[str, Any]], operator.add]
     knowledge: str
+    tenant_plan: str
+    budget_level: BudgetLevel
     """What was retrieved from the tenant's knowledge base for this turn."""
     outcome: Literal["replied", "refused", "handoff"]
     reply: str
@@ -168,11 +175,13 @@ async def _run(deps: AgentDeps, turn: TurnInput, graph_input: _State | Command[A
 
 
 async def _load_context(state: _State, runtime: Runtime[AgentDeps]) -> _State:
-    turn = state["turn"]
-    async with tenant_transaction(runtime.context.sessions, turn.tenant_id) as session:
+    deps, turn = runtime.context, state["turn"]
+    async with tenant_transaction(deps.sessions, turn.tenant_id) as session:
         tenant = await load_tenant(session, turn.tenant_id)
         hours = await opening_hours(session, turn.tenant_id)
         rules = await active_rules(session, turn.tenant_id)
+        level = await budget.tenant_level(session, tenant, turn.now)
+        open_for_calls = await budget.deployment_open(session, deps.daily_cap_microusd)
     local_now = to_local(turn.now, timezone_of(tenant))
     today = local_now.date()
     context: _State = {
@@ -183,6 +192,8 @@ async def _load_context(state: _State, runtime: Runtime[AgentDeps]) -> _State:
         "transcript": [*_history(turn), Message(role="user", content="\n".join(turn.messages))],
         "timezone": tenant.timezone,
         "today": today,
+        "tenant_plan": tenant.plan,
+        "budget_level": level,
         "facts": [
             Sourced(Day(today), "profile"),
             *facts_in(prompts.opening_hours_text(hours), "profile", today=today),
@@ -194,7 +205,16 @@ async def _load_context(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     # answer of a model can keep a customer from reaching a person.
     if intents.asks_for_a_person(turn.messages):
         context["handoff_reason"] = "customer_asked"
+    elif level == "exhausted" or not open_for_calls:
+        # No model is called for a tenant past its budget, or for anyone once the
+        # deployment reached its cap for the day or was switched off by hand.
+        context["handoff_reason"] = "budget_exhausted"
     return context
+
+
+def _model(deps: AgentDeps, state: _State, node: Literal["classify", "plan"]) -> str:
+    routes = deps.routes or Routes(default=deps.model)
+    return routes.model_for(node, state["tenant_plan"], state["budget_level"])
 
 
 async def _call_model(
@@ -227,7 +247,7 @@ async def _classification(state: _State, deps: AgentDeps) -> _State:
         state["turn"],
         "classify",
         ModelRequest(
-            model=deps.model,
+            model=_model(deps, state, "classify"),
             system=prompts.classify_prompt(state["tenant_name"]),
             messages=tuple(state["transcript"]),
             output_schema=Classification.model_json_schema(),
@@ -294,7 +314,7 @@ async def _refuse(state: _State) -> _State:
 async def _plan(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     deps = runtime.context
     request = ModelRequest(
-        model=deps.model,
+        model=_model(deps, state, "plan"),
         system=state["plan_system"],
         messages=tuple(state["transcript"]),
         tools=TOOL_SPECS,

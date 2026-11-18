@@ -27,6 +27,8 @@ class Tenant(Base):
     timezone: Mapped[str]
     slot_minutes: Mapped[int]
     late_change_minutes: Mapped[int | None]
+    plan: Mapped[str] = mapped_column(server_default="basic")
+    monthly_budget_microusd: Mapped[int | None]
 
 
 class Resource(Base):
@@ -296,6 +298,8 @@ class Message(Base):
     seq: Mapped[int | None]
     sent_at: Mapped[datetime | None]
     provider_message_id: Mapped[str | None]
+    channel_cost_micros: Mapped[int | None]
+    channel_cost_currency: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 
 
@@ -315,3 +319,4 @@ class ModelCall(Base):
     latency_ms: Mapped[int]
     cost_microusd: Mapped[int]
     price_table_version: Mapped[str]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))

@@ -53,6 +53,9 @@ class TenantSeed:
     services: tuple[ServiceSeed, ...]
     late_change_minutes: int | None = None
     """Notice below which cancelling or moving a booking needs the owner's approval."""
+    plan: str = "basic"
+    monthly_budget_microusd: int | None = None
+    """What the tenant's model calls may cost in a month, in millionths of a dollar."""
     knowledge: tuple[tuple[str, str], ...] = ()
     """What the owner knows and the catalog does not: a title and a short text each."""
 
@@ -87,6 +90,7 @@ BARBERSHOP = TenantSeed(
         ServiceSeed("Corte e barba", 50, ((_MIDNIGHT, 7000),), ("Caio", "Renan")),
     ),
     late_change_minutes=180,
+    monthly_budget_microusd=5_000_000,
     knowledge=(
         ("Endereço", "Ficamos na Rua dos Andradas, 1200, no Centro Histórico de Porto Alegre."),
         (
@@ -137,6 +141,8 @@ ARENA = TenantSeed(
             ("Quadra de Areia",),
         ),
     ),
+    plan="pro",
+    monthly_budget_microusd=20_000_000,
     knowledge=(
         ("Endereço", "Ficamos na Avenida Ipiranga, 5300, no Jardim Botânico, em Porto Alegre."),
         (
@@ -186,6 +192,8 @@ async def seed(
             else:
                 # Settings added after a database was first seeded reach it here.
                 row.late_change_minutes = tenant.late_change_minutes
+                row.plan = tenant.plan
+                row.monthly_budget_microusd = tenant.monthly_budget_microusd
             if owner_password is not None:
                 await _add_owner(session, tenant, owner_password)
         await _embed_knowledge(factory, tenant, embedder)
@@ -232,6 +240,8 @@ async def _add_tenant(session: AsyncSession, tenant: TenantSeed) -> None:
             timezone=tenant.timezone,
             slot_minutes=tenant.slot_minutes,
             late_change_minutes=tenant.late_change_minutes,
+            plan=tenant.plan,
+            monthly_budget_microusd=tenant.monthly_budget_microusd,
         )
     )
     await session.flush()
