@@ -51,15 +51,21 @@ def completion(message: dict[str, Any], finish_reason: str = "stop") -> dict[str
 class Recorder:
     """An HTTP transport that answers with a canned response and keeps what was sent."""
 
-    def __init__(self, status: int = 200, body: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        status: int = 200,
+        body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.status = status
         self.body = body or completion({"role": "assistant", "content": "ok"})
+        self.headers = headers or {}
         self.sent: dict[str, Any] = {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.sent = json.loads(request.content)
         self.url = str(request.url)
-        return httpx.Response(self.status, json=self.body, request=request)
+        return httpx.Response(self.status, json=self.body, headers=self.headers, request=request)
 
 
 def provider(transport: Any) -> AzureOpenAIProvider:
@@ -262,6 +268,30 @@ async def test_http_failures_map_to_the_port_errors(status: int, expected: type[
 
     with pytest.raises(expected):
         await provider(failing).complete(request())
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ({"retry-after": "17"}, 17.0),
+        # The finer one wins when the provider sends both.
+        ({"retry-after-ms": "1500", "retry-after": "2"}, 1.5),
+        ({}, None),
+        # A date, which the header also allows, is not worth a parser: the backoff stands.
+        ({"retry-after": "Wed, 18 Nov 2026 12:00:00 GMT"}, None),
+    ],
+)
+async def test_a_throttled_call_carries_how_long_the_provider_asked_to_wait(
+    headers: dict[str, str], expected: float | None
+) -> None:
+    throttled = Recorder(
+        status=429, body={"error": {"code": "429", "message": "x"}}, headers=headers
+    )
+
+    with pytest.raises(ModelThrottledError) as raised:
+        await provider(throttled).complete(request())
+
+    assert raised.value.retry_after == expected
 
 
 async def test_a_prompt_stopped_by_the_content_filter_is_its_own_error() -> None:

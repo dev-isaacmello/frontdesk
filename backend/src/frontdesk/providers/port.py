@@ -68,6 +68,11 @@ class ModelTimeoutError(ModelError):
 class ModelThrottledError(ModelError):
     """The provider refused the call because of a rate or quota limit. Worth retrying later."""
 
+    def __init__(self, message: str = "", *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+        """Seconds the provider asked to wait before the next call, when it said."""
+
 
 class ModelUnavailableError(ModelError):
     """The provider failed or could not be reached. Worth retrying."""

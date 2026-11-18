@@ -56,7 +56,7 @@ class AzureOpenAIProvider:
         except openai.APITimeoutError as error:
             raise ModelTimeoutError(str(error)) from error
         except openai.RateLimitError as error:
-            raise ModelThrottledError(str(error)) from error
+            raise ModelThrottledError(str(error), retry_after=_retry_after(error)) from error
         except (openai.APIConnectionError, openai.InternalServerError) as error:
             raise ModelUnavailableError(str(error)) from error
         except openai.APIStatusError as error:
@@ -71,6 +71,17 @@ class AzureOpenAIProvider:
         if request.reasoning_effort is not None and request.model in self._reasoning_models:
             payload["reasoning_effort"] = request.reasoning_effort
         return payload
+
+
+def _retry_after(error: openai.APIStatusError) -> float | None:
+    """How long the provider asked to wait, in seconds, when it said so as a number."""
+    headers = error.response.headers
+    for name, per_second in (("retry-after-ms", 1000.0), ("retry-after", 1.0)):
+        try:
+            return float(headers[name]) / per_second
+        except (KeyError, ValueError):
+            continue
+    return None
 
 
 def _was_filtered(error: openai.APIStatusError) -> bool:

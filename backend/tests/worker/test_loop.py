@@ -19,13 +19,14 @@ from frontdesk.providers.port import (
     ModelRejectedError,
     ModelRequest,
     ModelResponse,
+    ModelThrottledError,
 )
 from frontdesk.providers.prices import load_price_table
 from frontdesk.queue.port import Delivery, TriggerQueue
 from frontdesk.queue.triggers import Trigger
 from frontdesk.seed import BARBERSHOP
 from frontdesk.worker.handler import WorkerDeps
-from frontdesk.worker.loop import backoff_seconds, process_next, run
+from frontdesk.worker.loop import backoff_seconds, held_seconds, process_next, run
 from tests.fakes import InMemoryLease, InMemoryTriggerQueue, waiting_triggers
 from tests.support import RecordingSender, conversation_row, say
 from tests.tools.conftest import NOW
@@ -193,6 +194,18 @@ async def test_ing_4_a_busy_conversation_stays_in_the_queue_without_counting_an_
 
 def test_a_failed_trigger_is_held_longer_at_each_attempt() -> None:
     assert [backoff_seconds(attempt) for attempt in range(1, 7)] == [2, 4, 8, 16, 30, 30]
+
+
+def test_ing_6_a_throttled_turn_is_held_for_as_long_as_the_provider_asked() -> None:
+    """The quota is counted over a minute and the backoff alone spans thirty seconds."""
+    asked = ModelThrottledError("slow down", retry_after=40)
+
+    assert held_seconds(asked, 1, backoff_seconds) == 40
+    # Never less than the backoff, and never a wait a provider could stretch without end.
+    assert held_seconds(ModelThrottledError("slow down", retry_after=1), 3, backoff_seconds) == 8
+    assert held_seconds(ModelThrottledError("slow down", retry_after=900), 1, backoff_seconds) == 60
+    assert held_seconds(ModelThrottledError("slow down"), 2, backoff_seconds) == 4
+    assert held_seconds(TimeoutError("down"), 2, backoff_seconds) == 4
 
 
 async def test_the_loop_handles_conversations_side_by_side_and_stops_when_asked(

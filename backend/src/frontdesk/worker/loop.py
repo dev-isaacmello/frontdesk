@@ -7,7 +7,7 @@ from contextlib import suppress
 
 from frontdesk import logs, metrics
 from frontdesk.domain.conversations import ConversationBusyError
-from frontdesk.providers.port import ModelRejectedError
+from frontdesk.providers.port import ModelRejectedError, ModelThrottledError
 from frontdesk.queue.port import Lease, TriggerQueue
 from frontdesk.queue.triggers import Trigger
 from frontdesk.worker.handler import WorkerDeps, give_up, handle
@@ -25,6 +25,25 @@ _QUEUE_RETRY_SECONDS = 5
 def backoff_seconds(attempt: int) -> float:
     """How long a failed trigger is held before it is given back: 2, 4, 8, 16, then 30 s."""
     return float(min(2**attempt, 30))
+
+
+_MAX_THROTTLE_WAIT_SECONDS = 60.0
+"""The longest a provider's request to wait is obeyed: one window of a per-minute quota."""
+
+
+def held_seconds(error: BaseException, attempt: int, pause: Callable[[int], float]) -> float:
+    """How long a failed trigger is held before it is given back.
+
+    The backoff, or what a throttling provider asked for when that is longer. The quota is
+    counted over a minute and the backoff of five attempts adds up to thirty seconds, so
+    without this a turn can spend every attempt inside one window that is already used up.
+    The slot stays taken meanwhile, which is the point: fewer turns run while there is no
+    quota to run them with, and the rest wait in the queue.
+    """
+    backoff = pause(attempt)
+    if isinstance(error, ModelThrottledError) and error.retry_after is not None:
+        return max(backoff, min(error.retry_after, _MAX_THROTTLE_WAIT_SECONDS))
+    return backoff
 
 
 async def run(
@@ -116,6 +135,7 @@ async def handle_conversation(
                     "tenant_id": str(trigger.tenant_id),
                     "conversation_id": str(trigger.conversation_id),
                     "attempt": delivery.attempt,
+                    "retry_after_s": getattr(error, "retry_after", None),
                     **logs.failure(error),
                 },
             )
@@ -129,7 +149,7 @@ async def handle_conversation(
             else:
                 # The conversation stays leased during the pause, so nothing of it runs
                 # out of order and a dependency that is down is not hit in a tight loop.
-                await asyncio.sleep(pause(delivery.attempt))
+                await asyncio.sleep(held_seconds(error, delivery.attempt, pause))
             await lease.retry(delivery)
             return 0
         await lease.ack(delivery)
