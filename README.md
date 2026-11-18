@@ -14,7 +14,9 @@ Knowledge and cost. What a business knows and its catalog does not, such as the 
 
 The evaluation. A golden set of 37 conversations in pt-BR runs through the real worker against a real model and is judged by code. A pull request that touches prompts, graph, tools, providers or checks runs it in CI, signed in to Azure with a federated identity and no stored key, and fails when two cases that pass in every run on main no longer do. Two pull requests show it: [one](https://github.com/dev-isaacmello/frontdesk/pull/1) trims the prompt, which I expected to fail and which the gate lets through with the numbers; [the other](https://github.com/dev-isaacmello/frontdesk/pull/2) adds an instruction that sounds prudent, and the gate stops it and names the four conversations it broke.
 
-What does not exist yet. WhatsApp itself, the Azure deployment, traces and load numbers. The knowledge base of the two businesses comes from the seed: the panel has no screen to edit it. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
+Written and not yet run against the real thing. The WhatsApp channel is tested against the payloads in Meta's documentation and has not exchanged a message with Meta. The Terraform of the Azure environment in [infra](infra) passes validation and has never been applied. Every message produces one OpenTelemetry trace from the request to the reply, tested with an exporter in memory; the Phoenix container the compose file offers for looking at traces has not received one yet. Phase 5 ends with the environment applied for a measured window and destroyed, and Phase 6 with load and failure numbers; neither has happened.
+
+What does not exist. Metrics apart from what the panel and the database show, a load test, and a screen to edit the knowledge base, which comes from the seed. Without a model key the agent runs on a deterministic offline model that understands a handful of phrasings by keyword. It is there so the pipeline can run and be measured with no cloud account, and nothing about answer quality should be read from it.
 
 ## Run it
 
@@ -49,7 +51,7 @@ flowchart TD
     panel -- owner routes --> api
 ```
 
-The decisions behind this, each with the alternatives I rejected and what the choice costs, are in [docs/adr](docs/adr). Three I would read first:
+The decisions behind this, each with the alternatives I rejected and what the choice costs, are in [docs/adr](docs/adr). What to look at and what to do when the queue grows, the model provider is down, the webhook signature fails or cost passes its budget is in [docs/runbooks](docs/runbooks). Three I would read first:
 
 - [0001](docs/adr/0001-postgres-inbox-and-session-queue-as-trigger.md): PostgreSQL is the inbox and the queue only carries a trigger, because a lock on a queue is not exclusivity. It also says what a session per conversation costs in latency.
 - [0004](docs/adr/0004-row-level-security-with-transaction-scoped-tenant.md): tenant isolation by row-level security with a setting that lives for one transaction.

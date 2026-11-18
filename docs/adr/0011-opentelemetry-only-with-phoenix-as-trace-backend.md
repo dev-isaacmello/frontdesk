@@ -35,3 +35,7 @@ Auto-instrumentation packages for LangChain or for the model SDK. Beta, tied to 
 ## Cost of this choice
 
 Phoenix is under the Elastic License, not an OSI license; that is fine for self-hosting and worth knowing. In Azure it is a fourth container app and more rows in the database, so it is optional there and off by default in the cost estimate. Azure Monitor now ingests OTLP as well, through a collector with Entra authentication, which makes it a second backend to point the same spans at without changing the application. Because the GenAI conventions are not stable, attribute names may need a rename later. Hand-written spans mean a model call I forget to wrap is invisible, so the provider port is the only place allowed to call a provider.
+
+## As built
+
+The spans are written by hand in five places: the inbound request, the worker, the wrapper every graph node runs in, the one function through which a node calls a model, and the tool runner. The trace context travels in the trigger. Phoenix is in the compose file under a profile of its own and keeps its data in a volume, not in the application's PostgreSQL as planned above: one less thing sharing the database, and nothing to create in it. When this was written the container had been configured and had not yet received a trace.

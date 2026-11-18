@@ -26,6 +26,9 @@ x-backend: &backend
     FRONTDESK_MODEL_PRO: ${FRONTDESK_MODEL_PRO:-}
     FRONTDESK_MODEL_ECONOMY: ${FRONTDESK_MODEL_ECONOMY:-}
     FRONTDESK_DAILY_CAP_USD: ${FRONTDESK_DAILY_CAP_USD:-2}
+    # Where spans go. Unset, none leaves the process; `--profile traces` starts Phoenix,
+    # and FRONTDESK_OTLP_ENDPOINT=http://phoenix:6006/v1/traces points at it.
+    FRONTDESK_OTLP_ENDPOINT: ${FRONTDESK_OTLP_ENDPOINT:-}
     FRONTDESK_AZURE_OPENAI_ENDPOINT: ${FRONTDESK_AZURE_OPENAI_ENDPOINT:-}
     FRONTDESK_AZURE_OPENAI_API_KEY: ${FRONTDESK_AZURE_OPENAI_API_KEY:-}
 
@@ -138,5 +141,25 @@ services:
       api:
         condition: service_healthy
 
+  # The trace of each message, to look at while developing (ADR 0011). Not part of the
+  # default stack:
+  #
+  #   FRONTDESK_OTLP_ENDPOINT=http://phoenix:6006/v1/traces docker compose --profile traces up
+  #
+  # and then http://localhost:6006.
+  phoenix:
+    image: arizephoenix/phoenix:version-21.0.0
+    profiles: ["traces"]
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+      # Reached from this machine only, through the port below.
+      PHOENIX_ENABLE_AUTH: "false"
+      PHOENIX_TELEMETRY_ENABLED: "false"
+    volumes:
+      - phoenix:/mnt/data
+    ports:
+      - "127.0.0.1:${FRONTDESK_PHOENIX_PORT:-6006}:6006"
+
 volumes:
   postgres:
+  phoenix:
