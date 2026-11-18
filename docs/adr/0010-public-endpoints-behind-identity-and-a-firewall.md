@@ -36,3 +36,12 @@ Entra ID authentication for PostgreSQL instead of a password. It removes the las
 The database listens on the internet. What stands in front of it is a firewall rule, TLS and a password, which is weaker than not being routable at all. If the environment's outbound address changes, the application loses the database until the rule is updated; the API's health check and the queue's age are how I find out, and that failure is a candidate for the chaos scenario in Phase 6.
 
 Identity replaces network position as the control, so a role assignment that is too wide is the mistake that matters. Each identity gets the narrowest role there is: send on the queue for the API, receive for the worker, read on the secrets it uses, and the inference role on the model resource.
+
+## As built
+
+The first apply, on 2026-11-18, undid one line of the decision. Without a virtual network the environment does not leave through an address of its own. It leaves through 181, scattered over twenty-one address blocks, from a pool the region shares between customers. The rule I had chosen as the narrow one was therefore 181 rules, which PostgreSQL creates one at a time at about a minute each, three hours in all, to admit a set of addresses that other customers' apps use too. It would have looked like a boundary and been none.
+
+So the database has the rule I rejected above, access from any Azure service, and the Terraform says so where the rule is. The internet outside Azure is still refused. Inside Azure what protects the database is TLS and the passwords of its two roles, generated and kept in the vault. That is what the estimate's cheapest line buys, and it is the first thing I would pay to change: a virtual network with the database on private access, which the cost estimate puts at about USD 0.035 per hour. The variable that switches the module to it, which the decision above promises, does not exist.
+
+The Service Bus namespace was created with local authentication disabled, as expected, so it accepts no connection string.
+

@@ -10,6 +10,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    # For the one property of the Container Apps environment azurerm cannot set.
+    azapi = {
+      source  = "azure/azapi"
+      version = "~> 2.0"
+    }
   }
 
   # The state holds the generated passwords, so it lives in a private storage account and
@@ -44,4 +49,8 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = false
     }
   }
+}
+
+provider "azapi" {
+  subscription_id = var.subscription_id
 }

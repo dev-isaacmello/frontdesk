@@ -8,11 +8,6 @@ output "api_url" {
   value       = "https://${azurerm_container_app.api.ingress[0].fqdn}"
 }
 
-output "environment_outbound_ips" {
-  description = "Pass these as database_allowed_ips on the second apply."
-  value       = distinct(concat(azurerm_container_app.api.outbound_ip_addresses, azurerm_container_app.worker.outbound_ip_addresses))
-}
-
 output "registry" {
   value = azurerm_container_registry.main.login_server
 }

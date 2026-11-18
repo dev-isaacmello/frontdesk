@@ -266,8 +266,9 @@ resource "azurerm_postgresql_flexible_server" "main" {
   administrator_login           = "frontdesk_admin"
   administrator_password        = random_password.database["admin"].result
   public_network_access_enabled = true
-  # A demo of fictional data on the smallest server: one zone, no standby.
-  zone = "1"
+  # A demo of fictional data on the smallest server: no standby. The zone is left to Azure:
+  # the student subscription refuses a named one in this region, and whichever it picks is
+  # not a change to undo.
   tags = local.tags
 
   lifecycle {
@@ -281,14 +282,16 @@ resource "azurerm_postgresql_flexible_server_configuration" "extensions" {
   value     = "BTREE_GIST,VECTOR"
 }
 
-# Only the addresses the environment calls out from (ADR 0010). They exist after the
-# environment does, so the first apply creates no rule and the second one creates these.
-resource "azurerm_postgresql_flexible_server_firewall_rule" "environment" {
-  for_each         = toset(var.database_allowed_ips)
-  name             = "environment-${replace(each.value, ".", "-")}"
+# The rule Azure reads as "any Azure service", and not the environment's own addresses as
+# ADR 0010 planned: without a virtual network the environment leaves through 181 addresses
+# of a pool it shares with other customers, so naming them was 181 rules that kept nobody
+# in particular out. What stands in front of the database is TLS and a password, and the
+# internet outside Azure is refused. The ADR has what this gives up.
+resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
+  name             = "azure-services"
   server_id        = azurerm_postgresql_flexible_server.main.id
-  start_ip_address = each.value
-  end_ip_address   = each.value
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
 }
 
 # ----------------------------------------------------------------------- container apps
@@ -299,6 +302,25 @@ resource "azurerm_container_app_environment" "main" {
   resource_group_name        = azurerm_resource_group.main.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   tags                       = local.tags
+}
+
+# Azure created this environment as "express" on the student subscription: a shared tier
+# with no jobs and no Key Vault references, which is what the first apply failed on. Its
+# documentation says a template gets a standard environment unless it asks for express,
+# and azurerm 4 has no argument for the mode, so the mode is set through the resource API.
+# On an environment that came up express the change took Azure about twenty-five minutes.
+# A PATCH of the one property: a full update is refused, because reading the environment
+# does not give back the workspace key that writing it requires.
+resource "azapi_resource_action" "standard_environment" {
+  type        = "Microsoft.App/managedEnvironments@2026-07-01"
+  resource_id = azurerm_container_app_environment.main.id
+  method      = "PATCH"
+
+  body = {
+    properties = {
+      environmentMode = "WorkloadProfiles"
+    }
+  }
 }
 
 resource "azurerm_container_app" "api" {
@@ -384,7 +406,11 @@ resource "azurerm_container_app" "api" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.reads_secret, azurerm_role_assignment.pulls_images]
+  depends_on = [
+    azurerm_role_assignment.reads_secret,
+    azurerm_role_assignment.pulls_images,
+    azapi_resource_action.standard_environment,
+  ]
 
   # The image is set here once, at creation. After that the deploy workflow rolls it.
   lifecycle {
@@ -461,7 +487,11 @@ resource "azurerm_container_app" "worker" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.reads_secret, azurerm_role_assignment.pulls_images]
+  depends_on = [
+    azurerm_role_assignment.reads_secret,
+    azurerm_role_assignment.pulls_images,
+    azapi_resource_action.standard_environment,
+  ]
 
   # The image is set here once, at creation. After that the deploy workflow rolls it.
   lifecycle {
@@ -524,7 +554,11 @@ resource "azurerm_container_app" "web" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.reads_secret, azurerm_role_assignment.pulls_images]
+  depends_on = [
+    azurerm_role_assignment.reads_secret,
+    azurerm_role_assignment.pulls_images,
+    azapi_resource_action.standard_environment,
+  ]
 
   # The image is set here once, at creation. After that the deploy workflow rolls it.
   lifecycle {
@@ -609,7 +643,11 @@ resource "azurerm_container_app_job" "setup" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.reads_secret, azurerm_role_assignment.pulls_images]
+  depends_on = [
+    azurerm_role_assignment.reads_secret,
+    azurerm_role_assignment.pulls_images,
+    azapi_resource_action.standard_environment,
+  ]
 
   # The image is set here once, at creation. After that the deploy workflow rolls it.
   lifecycle {

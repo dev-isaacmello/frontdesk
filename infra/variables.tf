@@ -58,12 +58,6 @@ variable "daily_cap_usd" {
   default     = "2"
 }
 
-variable "database_allowed_ips" {
-  description = "Outbound addresses of the Container Apps environment, which are known only after it exists. Empty on the first apply; the second apply passes the output environment_outbound_ips."
-  type        = list(string)
-  default     = []
-}
-
 variable "github_subject" {
   description = "Subject of the GitHub Actions token that may deploy, as the token of this repository states it."
   type        = string

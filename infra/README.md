@@ -28,9 +28,9 @@ terraform init \
   -backend-config=container_name=tfstate -backend-config=key=demo.tfstate
 ```
 
-## Applying takes three passes, and why
+## Applying takes two passes, and why
 
-An app cannot be created before its image is in the registry, and the database firewall cannot name the environment's outbound addresses before the environment exists. So:
+An app cannot be created before its image is in the registry. So:
 
 1. The registry and the identity that deploys to it.
 
@@ -48,20 +48,13 @@ An app cannot be created before its image is in the registry, and the database f
    terraform apply -var-file=demo.tfvars -var image_tag=<commit>
    ```
 
-   The apps start and cannot reach the database yet.
-
-3. The firewall, with the addresses the second pass printed.
-
-   ```
-   terraform apply -var-file=demo.tfvars -var image_tag=<commit> \
-     -var 'database_allowed_ips=["<address>", "<address>"]'
-   ```
-
    Then start the job that creates the roles, the schema and the two demo tenants:
 
    ```
    az containerapp job start --name caj-frontdesk-setup --resource-group rg-frontdesk-demo
    ```
+
+The second pass is slow the first time. On the student subscription Azure creates the Container Apps environment as "express", a shared tier with no jobs and no Key Vault references, and the configuration asks for a standard one right after, which took Azure about twenty-five minutes.
 
 After that the `deploy` workflow rolls a new commit by itself: it pushes the images, starts the setup job, which migrates, and points the three apps at the new tag.
 
