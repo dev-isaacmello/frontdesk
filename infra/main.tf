@@ -688,6 +688,14 @@ resource "azurerm_role_assignment" "deploy_rolls_apps" {
 }
 
 # Rolling an app that runs as an identity needs leave to assign that identity to it.
+# The apps' role does not reach jobs, which the first run of the workflow found out: it
+# could not see the job it was to start. On the job alone, not on the group.
+resource "azurerm_role_assignment" "deploy_runs_setup" {
+  scope                = azurerm_container_app_job.setup.id
+  role_definition_name = "Container Apps Jobs Contributor"
+  principal_id         = azurerm_user_assigned_identity.deploy.principal_id
+}
+
 resource "azurerm_role_assignment" "deploy_uses_identities" {
   for_each             = azurerm_user_assigned_identity.workload
   scope                = each.value.id
