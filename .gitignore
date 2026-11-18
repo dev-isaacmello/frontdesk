@@ -30,3 +30,6 @@ node_modules/
 .idea/
 .vscode/
 .DS_Store
+
+# Terraform: the variables of a real environment.
+*.tfvars

@@ -1,0 +1,19 @@
+# Copy to demo.tfvars, which git ignores, and fill in. Nothing here is a secret; the
+# WhatsApp secrets are passed as TF_VAR_whatsapp_app_secret and the like, never in a file.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+suffix          = "abc123"
+
+model_account = {
+  name           = "<the Azure OpenAI resource>"
+  resource_group = "<its resource group>"
+  endpoint       = "https://<resource>.openai.azure.com"
+}
+
+# As GitHub states it in the token of this repository, with the numeric ids.
+github_subject = "repo:<owner>@<owner id>/<repo>@<repo id>:ref:refs/heads/main"
+
+# whatsapp = {
+#   phone_number_id = "<id of the test number>"
+#   tenant          = "navalha"
+# }

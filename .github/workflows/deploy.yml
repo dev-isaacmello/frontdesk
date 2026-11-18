@@ -1,0 +1,76 @@
+name: deploy
+
+# Builds the two images, pushes them to the registry of the demo environment and rolls the
+# apps to them. Started by hand: the environment exists only for measured windows, and
+# this workflow fails when it does not.
+on:
+  workflow_dispatch:
+    inputs:
+      push_only:
+        description: Push the images and stop, before the apps exist
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  # To sign in to Azure as a federated identity, with no stored credential.
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ${{ vars.FRONTDESK_REGISTRY }}
+  RESOURCE_GROUP: ${{ vars.FRONTDESK_RESOURCE_GROUP }}
+  TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    # The identity is federated to this branch only.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # May push images and change the apps. May not read a secret or grant a role.
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build and push the images
+        run: |
+          az acr login --name "${REGISTRY%%.*}"
+          docker build --tag "$REGISTRY/frontdesk-backend:$TAG" backend
+          docker build --tag "$REGISTRY/frontdesk-web:$TAG" web
+          docker push "$REGISTRY/frontdesk-backend:$TAG"
+          docker push "$REGISTRY/frontdesk-web:$TAG"
+      - name: Migrate and seed with the new image
+        if: ${{ !inputs.push_only }}
+        run: |
+          az containerapp job update --name caj-frontdesk-setup --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY/frontdesk-backend:$TAG" --output none
+          execution=$(az containerapp job start --name caj-frontdesk-setup \
+            --resource-group "$RESOURCE_GROUP" --query name --output tsv)
+          for _ in $(seq 60); do
+            status=$(az containerapp job execution show --name caj-frontdesk-setup \
+              --resource-group "$RESOURCE_GROUP" --job-execution-name "$execution" \
+              --query properties.status --output tsv)
+            echo "setup: $status"
+            if [ "$status" = "Succeeded" ]; then exit 0; fi
+            if [ "$status" = "Failed" ]; then exit 1; fi
+            sleep 10
+          done
+          echo "the setup job did not finish in ten minutes"
+          exit 1
+      # The schema is migrated while the previous code is still running, so a migration
+      # has to be one that code can live with.
+      - name: Roll the apps
+        if: ${{ !inputs.push_only }}
+        run: |
+          az containerapp update --name ca-frontdesk-api --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY/frontdesk-backend:$TAG" --output none
+          az containerapp update --name ca-frontdesk-worker --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY/frontdesk-backend:$TAG" --output none
+          az containerapp update --name ca-frontdesk-web --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY/frontdesk-web:$TAG" --output none
