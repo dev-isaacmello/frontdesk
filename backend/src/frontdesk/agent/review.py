@@ -20,9 +20,19 @@ _CLAIM_WORDS: dict[Action, str] = {
 
 
 def review(
-    reply: str, ledger: Iterable[Sourced], effects: Iterable[str], *, today: datetime.date
+    reply: str,
+    ledger: Iterable[Sourced],
+    effects: Iterable[str],
+    *,
+    today: datetime.date,
+    knowledge: str = "",
 ) -> list[str]:
-    """What is wrong with the reply, in pt-BR, or an empty list when it may be sent."""
+    """What is wrong with the reply, in pt-BR, or an empty list when it may be sent.
+
+    `knowledge` is what was retrieved from the tenant's knowledge base for this turn. A
+    word such as "gratuito" that the owner wrote there may be repeated; anywhere else it
+    is an offer nobody registered.
+    """
     problems: list[str] = []
     for violation in check(reply, ledger, today=today).violations:
         if violation.reason == "untyped":
@@ -34,8 +44,11 @@ def review(
                 f'"{violation.text}" não veio de nenhuma ferramenta deste atendimento, '
                 "nem do horário de funcionamento, nem da mensagem do cliente"
             )
+    written_by_the_owner = knowledge.lower()
     problems.extend(
-        f'"{word}": desconto, promoção ou gratuidade não existem' for word in discount_offers(reply)
+        f'"{word}": desconto, promoção ou gratuidade não existem'
+        for word in discount_offers(reply)
+        if word.lower() not in written_by_the_owner
     )
     problems.extend(
         f"a resposta diz que algo foi {_CLAIM_WORDS[action]}, mas nenhuma ferramenta fez isso"

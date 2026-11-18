@@ -1,6 +1,6 @@
 """The turn as an explicit graph (docs/design/agent-graph.md).
 
-    load_context -> classify -> plan -> gate -> execute -> plan
+    load_context -> classify -> retrieve -> plan -> gate -> execute -> plan
                \\           \\      \\       \\-> await_approval (interrupt) -> execute or plan
                \\           \\      \\-> validate -> done, back to plan once, or handoff
                 \\           \\-> refuse
@@ -34,15 +34,17 @@ from frontdesk.agent.review import review
 from frontdesk.agent.tool_runner import run_tool_call
 from frontdesk.agent.turn import HandoffReason, HistoryMessage, Step, TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
-from frontdesk.domain import approvals
+from frontdesk.domain import approvals, knowledge
 from frontdesk.domain.approvals import PendingApproval
 from frontdesk.domain.clock import to_local
 from frontdesk.domain.rules import active_rules
 from frontdesk.domain.tenants import load_tenant, opening_hours, timezone_of
 from frontdesk.guardrail import Day, Sourced, facts_in
+from frontdesk.providers.embeddings import Embedder
 from frontdesk.providers.ledger import ModelLedger
 from frontdesk.providers.port import (
     Message,
+    ModelError,
     ModelFilteredError,
     ModelProvider,
     ModelRequest,
@@ -82,6 +84,9 @@ class AgentDeps:
     model: str
     ledger: ModelLedger
     limits: TurnLimits = TurnLimits()
+    embedder: Embedder | None = None
+    """What the customer's message is embedded with to search the knowledge base. Without
+    one the turn runs with no retrieval."""
     checkpointer: BaseCheckpointSaver[str] = field(default_factory=InMemorySaver)
     """Where a turn that stops for approval is kept. In memory unless one is given, which
     is enough for a turn that starts and ends in the same process."""
@@ -115,6 +120,8 @@ class _State(TypedDict, total=False):
     gate: Literal["allow", "wait", "deny"]
     approval: dict[str, Any]
     steps: Annotated[list[dict[str, Any]], operator.add]
+    knowledge: str
+    """What was retrieved from the tenant's knowledge base for this turn."""
     outcome: Literal["replied", "refused", "handoff"]
     reply: str
 
@@ -237,6 +244,45 @@ async def _classification(state: _State, deps: AgentDeps) -> _State:
     return update
 
 
+async def _retrieve(state: _State, runtime: Runtime[AgentDeps]) -> _State:
+    """Finds what the tenant's knowledge base has about the message, for the planner.
+
+    Retrieval is an aid. When the embedding model cannot be reached the turn goes on
+    without it, on the tools and the opening hours alone.
+    """
+    deps, turn = runtime.context, state["turn"]
+    if deps.embedder is None:
+        return {"knowledge": ""}
+    try:
+        embedded = await deps.embedder.embed(["\n".join(turn.messages)])
+    except ModelError:
+        return {"knowledge": ""}
+    await deps.ledger.record_usage(
+        tenant_id=turn.tenant_id,
+        turn_id=turn.turn_id,
+        node="retrieve",
+        provider=deps.embedder.name,
+        model=deps.embedder.model,
+        usage=embedded.usage,
+        latency_ms=embedded.latency_ms,
+    )
+    async with tenant_transaction(deps.sessions, turn.tenant_id) as session:
+        chunks = await knowledge.search(
+            session,
+            embedded.vectors[0],
+            deps.embedder.model,
+            max_distance=deps.embedder.max_distance,
+        )
+    if not chunks:
+        return {"knowledge": ""}
+    found = "\n".join(f"- {chunk.title}: {chunk.body}" for chunk in chunks)
+    return {
+        "knowledge": found,
+        "plan_system": state["plan_system"] + prompts.knowledge_block(found),
+        "facts": facts_in(found, "knowledge", today=state["today"]),
+    }
+
+
 async def _handoff(state: _State) -> _State:  # noqa: ARG001  a node is called with the state
     return {"outcome": "handoff", "reply": prompts.HANDOFF_NOTICE}
 
@@ -271,7 +317,13 @@ async def _plan(state: _State, runtime: Runtime[AgentDeps]) -> _State:
 async def _validate(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     """Sends the draft, or sends it back once with what is wrong, or gives the turn up."""
     draft = state["draft"]
-    problems = review(draft, state.get("facts", []), state.get("effects", []), today=state["today"])
+    problems = review(
+        draft,
+        state.get("facts", []),
+        state.get("effects", []),
+        today=state["today"],
+        knowledge=state.get("knowledge", ""),
+    )
     if not problems:
         return {"outcome": "replied", "reply": draft}
     if state.get("blocks", 0) >= 1:
@@ -378,10 +430,10 @@ def _after_context(state: _State) -> Literal["classify", "handoff"]:
     return "handoff" if "handoff_reason" in state else "classify"
 
 
-def _after_classify(state: _State) -> Literal["plan", "refuse", "handoff"]:
+def _after_classify(state: _State) -> Literal["retrieve", "refuse", "handoff"]:
     if "handoff_reason" in state:
         return "handoff"
-    return "plan" if state["in_scope"] else "refuse"
+    return "retrieve" if state["in_scope"] else "refuse"
 
 
 def _after_execute(state: _State) -> Literal["plan", "handoff"]:
@@ -451,6 +503,8 @@ def _detail(name: str, state: _State, update: _State) -> dict[str, Any]:
         return {"effects": update.get("effects", []), "results": len(update.get("transcript", []))}
     if name == "validate":
         return {"passed": "outcome" in update}
+    if name == "retrieve":
+        return {"chunks": len(update.get("knowledge", "").splitlines())}
     if name == "handoff":
         return {"reason": state.get("handoff_reason")}
     return {}
@@ -463,6 +517,7 @@ def _build() -> StateGraph[_State, AgentDeps]:
         "classify": _classify,
         "refuse": _refuse,
         "handoff": _handoff,
+        "retrieve": _retrieve,
         "plan": _plan,
         "gate": _gate,
         "await_approval": _await_approval,
@@ -474,6 +529,7 @@ def _build() -> StateGraph[_State, AgentDeps]:
     graph.add_edge(START, "load_context")
     graph.add_conditional_edges("load_context", _after_context)
     graph.add_conditional_edges("classify", _after_classify)
+    graph.add_edge("retrieve", "plan")
     graph.add_edge("refuse", END)
     graph.add_edge("handoff", END)
     graph.add_conditional_edges(

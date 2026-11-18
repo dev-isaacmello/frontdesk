@@ -10,6 +10,7 @@ that connects with more than the application role:
     FRONTDESK_MIGRATIONS_DATABASE_URL  SQLAlchemy URL of the owner role
     FRONTDESK_DATABASE_URL             SQLAlchemy URL of the application role
     FRONTDESK_DEMO_OWNER_PASSWORD      password of the demo owner accounts; none if unset
+    FRONTDESK_EMBEDDING_MODEL          embedding deployment for the knowledge base; offline if unset
 """
 
 import asyncio
@@ -25,7 +26,9 @@ from frontdesk import logs
 from frontdesk.agent import checkpoints
 from frontdesk.db.bootstrap import APP_ROLE, BootstrapPlan, bootstrap
 from frontdesk.db.session import create_engine, create_session_factory
+from frontdesk.providers.embeddings import Embedder, HashingEmbedder
 from frontdesk.seed import seed
+from frontdesk.wiring import azure_openai_embedder, model_access_from_env
 
 log = logging.getLogger("frontdesk.setup")
 
@@ -61,9 +64,18 @@ def main() -> None:
 async def _seed(database_url: str, owner_password: str | None) -> None:
     engine = create_engine(database_url)
     try:
-        await seed(create_session_factory(engine), owner_password)
+        await seed(create_session_factory(engine), owner_password, _embedder())
     finally:
         await engine.dispose()
+
+
+def _embedder() -> Embedder:
+    """What the knowledge base is embedded with, by the same variables the worker reads."""
+    model = os.environ.get("FRONTDESK_EMBEDDING_MODEL") or "offline"
+    if model == "offline":
+        return HashingEmbedder()
+    endpoint, key = model_access_from_env()
+    return azure_openai_embedder(endpoint, key, model)
 
 
 if __name__ == "__main__":

@@ -185,13 +185,14 @@ async def test_pan_2_a_conversation_shows_what_was_said_and_the_steps_of_each_re
     assert [step["node"] for step in turn["steps"]] == [
         "load_context",
         "classify",
+        "retrieve",
         "plan",
         "gate",
         "execute",
         "plan",
         "validate",
     ]
-    assert turn["steps"][2]["detail"] == {"tools": ["quote"]}
+    assert turn["steps"][3]["detail"] == {"tools": ["quote"]}
     assert (turn["outcome"], turn["model_calls"], turn["blocked_drafts"]) == ("replied", 3, 0)
     assert "quanto custa" not in json.dumps([step["detail"] for step in turn["steps"]])
 

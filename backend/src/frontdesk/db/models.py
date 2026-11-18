@@ -4,6 +4,7 @@ from datetime import datetime, time
 from typing import Any
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB, TSTZRANGE, Range
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -161,6 +162,19 @@ class Handoff(Base):
     reason: Mapped[str]
     opened_at: Mapped[datetime]
     resolved_at: Mapped[datetime | None]
+
+
+class KbChunk(Base):
+    """One short text of a tenant's knowledge base, with the vector it is found by."""
+
+    __tablename__ = "kb_chunks"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    title: Mapped[str]
+    body: Mapped[str]
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536))
+    embedding_model: Mapped[str]
 
 
 class User(Base):

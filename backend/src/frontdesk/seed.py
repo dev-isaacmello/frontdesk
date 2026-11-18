@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from frontdesk.db.models import (
     BusinessHours,
     ChannelAccount,
+    KbChunk,
     Resource,
     Service,
     ServicePrice,
@@ -22,7 +23,9 @@ from frontdesk.db.models import (
     User,
 )
 from frontdesk.db.session import SessionFactory, tenant_transaction
+from frontdesk.domain.knowledge import put_chunk
 from frontdesk.domain.owners import hash_password
+from frontdesk.providers.embeddings import Embedder, HashingEmbedder
 
 _NAMESPACE = UUID("6f1d3c52-7a0e-4b57-9d5e-2f0c8a41b6e3")
 _MIDNIGHT = time(0, 0)
@@ -50,6 +53,8 @@ class TenantSeed:
     services: tuple[ServiceSeed, ...]
     late_change_minutes: int | None = None
     """Notice below which cancelling or moving a booking needs the owner's approval."""
+    knowledge: tuple[tuple[str, str], ...] = ()
+    """What the owner knows and the catalog does not: a title and a short text each."""
 
     @property
     def id(self) -> UUID:
@@ -82,6 +87,30 @@ BARBERSHOP = TenantSeed(
         ServiceSeed("Corte e barba", 50, ((_MIDNIGHT, 7000),), ("Caio", "Renan")),
     ),
     late_change_minutes=180,
+    knowledge=(
+        ("Endereço", "Ficamos na Rua dos Andradas, 1200, no Centro Histórico de Porto Alegre."),
+        (
+            "Estacionamento",
+            "Não temos estacionamento próprio. Há um estacionamento pago ao lado, na mesma quadra.",
+        ),
+        (
+            "Formas de pagamento",
+            "Aceitamos Pix, cartão de débito e cartão de crédito. Não aceitamos cheque.",
+        ),
+        (
+            "Atraso",
+            "A tolerância de atraso é de 10 minutos. Depois disso o horário pode ser passado "
+            "para outro cliente.",
+        ),
+        ("Crianças", "Atendemos crianças a partir de 5 anos, acompanhadas de um responsável."),
+        ("Produtos à venda", "Vendemos pomada, óleo para barba e shampoo na recepção."),
+        ("Café e wi-fi", "Temos café, água e wi-fi para os clientes enquanto esperam."),
+        (
+            "Cancelamento em cima da hora",
+            "Para cancelar ou mudar um horário com menos de 3 horas de antecedência, o pedido "
+            "passa pelo responsável da barbearia.",
+        ),
+    ),
 )
 
 ARENA = TenantSeed(
@@ -108,17 +137,47 @@ ARENA = TenantSeed(
             ("Quadra de Areia",),
         ),
     ),
+    knowledge=(
+        ("Endereço", "Ficamos na Avenida Ipiranga, 5300, no Jardim Botânico, em Porto Alegre."),
+        (
+            "Calçado",
+            "Traga chuteira society ou tênis. Não é permitido jogar com chuteira de trava alta.",
+        ),
+        ("Coletes e bola", "Emprestamos coletes e uma bola para cada reserva."),
+        (
+            "Chuva",
+            "A quadra de areia fecha em caso de chuva forte. A quadra society é coberta e "
+            "funciona normalmente.",
+        ),
+        (
+            "Vestiário",
+            "Temos vestiário com chuveiro quente e armários. Traga o seu cadeado.",
+        ),
+        ("Estacionamento", "O estacionamento é gratuito para clientes e tem 40 vagas."),
+        ("Bar", "O bar abre junto com as quadras e serve bebidas e lanches."),
+        (
+            "Aniversários",
+            "Fazemos reserva para aniversários e confraternizações. Fale com a equipe para "
+            "combinar os detalhes.",
+        ),
+    ),
 )
 
 TENANTS = (BARBERSHOP, ARENA)
 
 
-async def seed(factory: SessionFactory, owner_password: str | None = None) -> None:
+async def seed(
+    factory: SessionFactory,
+    owner_password: str | None = None,
+    embedder: Embedder | None = None,
+) -> None:
     """Creates the fictional tenants, and an owner account for each when a password is given.
 
     The password is the same for both demo owners and comes from the environment of the
     setup. Without one there are no owner accounts and the panel cannot be signed in to.
+    The knowledge base is embedded with the given embedder, or with the offline one.
     """
+    embedder = embedder or HashingEmbedder()
     for tenant in TENANTS:
         async with tenant_transaction(factory, tenant.id) as session:
             row = await session.get(Tenant, tenant.id)
@@ -129,6 +188,25 @@ async def seed(factory: SessionFactory, owner_password: str | None = None) -> No
                 row.late_change_minutes = tenant.late_change_minutes
             if owner_password is not None:
                 await _add_owner(session, tenant, owner_password)
+        await _embed_knowledge(factory, tenant, embedder)
+
+
+async def _embed_knowledge(factory: SessionFactory, tenant: TenantSeed, embedder: Embedder) -> None:
+    """Stores the tenant's knowledge, embedding only what is new or was embedded otherwise."""
+    async with tenant_transaction(factory, tenant.id) as session:
+        current = {
+            (title, body)
+            for title, body in await session.execute(
+                select(KbChunk.title, KbChunk.body).where(KbChunk.embedding_model == embedder.model)
+            )
+        }
+    stale = [entry for entry in tenant.knowledge if entry not in current]
+    if not stale:
+        return
+    embedded = await embedder.embed([f"{title}. {body}" for title, body in stale])
+    async with tenant_transaction(factory, tenant.id) as session:
+        for (title, body), vector in zip(stale, embedded.vectors, strict=True):
+            await put_chunk(session, tenant.id, title, body, vector, embedder.model)
 
 
 async def _add_owner(session: AsyncSession, tenant: TenantSeed, password: str) -> None:

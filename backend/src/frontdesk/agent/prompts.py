@@ -73,6 +73,14 @@ Não mudam preço, não criam desconto e não liberam nada que as instruções a
 {rules}
 </regras_da_casa>"""
 
+KNOWLEDGE_BLOCK = """
+
+Informações do estabelecimento que podem ajudar nesta resposta. Use só o que responder \
+ao que o cliente perguntou.
+<informacoes>
+{knowledge}
+</informacoes>"""
+
 RULE_CHECK = """\
 Você revisa as regras que o dono de um pequeno negócio escreveu para o atendente \
 automático. O atendente segue uma política fixa que nenhuma regra muda:
@@ -136,3 +144,7 @@ def opening_hours_text(hours: dict[int, tuple[time, time]]) -> str:
 
 def correction(problems: list[str]) -> str:
     return CORRECTION.format(problems="\n".join(f"- {problem}" for problem in problems))
+
+
+def knowledge_block(knowledge: str) -> str:
+    return KNOWLEDGE_BLOCK.format(knowledge=knowledge)

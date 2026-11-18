@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     model: str = "offline"
     """The model to call: the deployment name on Azure OpenAI. It is also the price table key."""
 
+    embedding_model: str = "offline"
+    """What the knowledge base is embedded and searched with: the offline word hashing, or
+    the name of an embedding deployment on the same Azure OpenAI resource."""
+
     azure_openai_endpoint: str | None = None
     """The resource endpoint, for example https://<resource>.openai.azure.com."""
 

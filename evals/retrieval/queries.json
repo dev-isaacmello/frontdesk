@@ -1,0 +1,156 @@
+{
+  "version": "2026-11-18.1",
+  "note": "Each query names the one chunk that answers it, or none when the answer is in the catalog or the schedule and nothing should be retrieved.",
+  "queries": [
+    {
+      "tenant": "navalha",
+      "query": "onde vocês ficam?",
+      "expected": "Endereço"
+    },
+    {
+      "tenant": "navalha",
+      "query": "qual a rua da barbearia?",
+      "expected": "Endereço"
+    },
+    {
+      "tenant": "navalha",
+      "query": "tem lugar pra deixar o carro?",
+      "expected": "Estacionamento"
+    },
+    {
+      "tenant": "navalha",
+      "query": "posso pagar no cartão?",
+      "expected": "Formas de pagamento"
+    },
+    {
+      "tenant": "navalha",
+      "query": "aceita pix?",
+      "expected": "Formas de pagamento"
+    },
+    {
+      "tenant": "navalha",
+      "query": "se eu chegar 15 minutos atrasado perco o horário?",
+      "expected": "Atraso"
+    },
+    {
+      "tenant": "navalha",
+      "query": "vocês cortam cabelo de criança?",
+      "expected": "Crianças"
+    },
+    {
+      "tenant": "navalha",
+      "query": "meu filho de 6 anos pode ir?",
+      "expected": "Crianças"
+    },
+    {
+      "tenant": "navalha",
+      "query": "vende pomada pra cabelo?",
+      "expected": "Produtos à venda"
+    },
+    {
+      "tenant": "navalha",
+      "query": "tem wifi?",
+      "expected": "Café e wi-fi"
+    },
+    {
+      "tenant": "navalha",
+      "query": "servem alguma coisa enquanto eu espero?",
+      "expected": "Café e wi-fi"
+    },
+    {
+      "tenant": "navalha",
+      "query": "consigo desmarcar em cima da hora?",
+      "expected": "Cancelamento em cima da hora"
+    },
+    {
+      "tenant": "navalha",
+      "query": "quanto custa o corte?",
+      "expected": null
+    },
+    {
+      "tenant": "navalha",
+      "query": "tem horário amanhã de manhã?",
+      "expected": null
+    },
+    {
+      "tenant": "navalha",
+      "query": "oi, tudo bem?",
+      "expected": null
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "qual o endereço da arena?",
+      "expected": "Endereço"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "pode jogar de chuteira de trava?",
+      "expected": "Calçado"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "preciso levar bola?",
+      "expected": "Coletes e bola"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "vocês têm colete?",
+      "expected": "Coletes e bola"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "se chover tem jogo?",
+      "expected": "Chuva"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "a quadra é coberta?",
+      "expected": "Chuva"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "tem chuveiro?",
+      "expected": "Vestiário"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "onde guardo minhas coisas durante o jogo?",
+      "expected": "Vestiário"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "tem vaga pra carro?",
+      "expected": "Estacionamento"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "vende cerveja?",
+      "expected": "Bar"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "dá pra comer alguma coisa aí?",
+      "expected": "Bar"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "dá pra fazer festa de aniversário?",
+      "expected": "Aniversários"
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "quanto custa a quadra society à noite?",
+      "expected": null
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "tem quadra livre sexta às 20h?",
+      "expected": null
+    },
+    {
+      "tenant": "ponto-final",
+      "query": "boa tarde!",
+      "expected": null
+    }
+  ]
+}

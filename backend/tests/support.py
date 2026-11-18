@@ -34,7 +34,10 @@ from tests.tools.conftest import NOW
 # scripted model's 100 and 20 tokens cost 140 micro-USD per call.
 PRICES = PriceTable(
     version="test",
-    models={"scripted": ModelPrice(input=Decimal("1.00"), output=Decimal("2.00"))},
+    models={
+        "scripted": ModelPrice(input=Decimal("1.00"), output=Decimal("2.00")),
+        "offline-hashing": ModelPrice(input=Decimal(0), output=Decimal(0)),
+    },
 )
 
 

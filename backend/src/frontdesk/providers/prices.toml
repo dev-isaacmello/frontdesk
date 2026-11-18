@@ -48,6 +48,18 @@ input = "0.075"
 output = "0.30"
 reasoning = false
 
+[models.text-embedding-3-small]
+# Azure OpenAI, Global Standard. Meter "text-embedding-3-small-glbl Tokens", per thousand.
+input = "0.02"
+output = "0"
+reasoning = false
+
+[models.offline-hashing]
+# The offline stand-in for embeddings. It makes no billed call.
+input = "0"
+output = "0"
+reasoning = false
+
 [models.offline]
 # The deterministic stand-in. It makes no billed call.
 reasoning = false

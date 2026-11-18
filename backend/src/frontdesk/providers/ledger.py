@@ -74,7 +74,28 @@ class ModelLedger:
         response: ModelResponse,
     ) -> None:
         """Writes the call in its own transaction, so it survives a turn that fails later."""
-        usage = response.usage
+        await self.record_usage(
+            tenant_id=tenant_id,
+            turn_id=turn_id,
+            node=node,
+            provider=provider,
+            model=response.model,
+            usage=response.usage,
+            latency_ms=response.latency_ms,
+        )
+
+    async def record_usage(
+        self,
+        *,
+        tenant_id: UUID,
+        turn_id: UUID | None,
+        node: str,
+        provider: str,
+        model: str,
+        usage: Usage,
+        latency_ms: int,
+    ) -> None:
+        """The same for a call that is not a completion, such as an embedding."""
         async with tenant_transaction(self._sessions, tenant_id) as session:
             session.add(
                 ModelCall(
@@ -82,13 +103,13 @@ class ModelLedger:
                     turn_id=turn_id,
                     node=node,
                     provider=provider,
-                    model=response.model,
+                    model=model,
                     input_tokens=usage.input_tokens,
                     output_tokens=usage.output_tokens,
                     cache_read_tokens=usage.cache_read_tokens,
                     cache_write_tokens=usage.cache_write_tokens,
-                    latency_ms=response.latency_ms,
-                    cost_microusd=self._prices.cost_microusd(response.model, usage),
+                    latency_ms=latency_ms,
+                    cost_microusd=self._prices.cost_microusd(model, usage),
                     price_table_version=self._prices.version,
                 )
             )

@@ -12,7 +12,7 @@ from psycopg import sql
 
 OWNER_ROLE = "frontdesk_owner"
 APP_ROLE = "frontdesk_app"
-EXTENSIONS = ("btree_gist",)
+EXTENSIONS = ("btree_gist", "vector")
 
 
 @dataclass(frozen=True)
