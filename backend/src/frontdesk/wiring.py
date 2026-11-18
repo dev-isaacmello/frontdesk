@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import FastAPI
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from openai import AsyncOpenAI
+from pydantic import SecretStr
 
 from frontdesk.agent.graph import AgentDeps
 from frontdesk.api.app import ApiDeps, create_app
@@ -47,11 +48,15 @@ def provider_from(settings: Settings) -> ModelProvider:
         return OfflineProvider()
     if settings.azure_openai_endpoint is None:
         raise ValueError("FRONTDESK_AZURE_OPENAI_ENDPOINT is required for azure_openai")
-    key = settings.azure_openai_api_key
+    return azure_openai_provider(settings.azure_openai_endpoint, settings.azure_openai_api_key)
+
+
+def azure_openai_provider(endpoint: str, key: SecretStr | None) -> AzureOpenAIProvider:
+    """The adapter for a resource, signing in with the key or, without one, as the process."""
     return AzureOpenAIProvider(
         AsyncOpenAI(
             # The v1 route, where the model named in a request is the deployment.
-            base_url=f"{settings.azure_openai_endpoint.rstrip('/')}/openai/v1/",
+            base_url=f"{endpoint.rstrip('/')}/openai/v1/",
             api_key=key.get_secret_value() if key else _entra_token_provider(),
             # One retry policy for the whole turn, in the worker, not one per call here.
             max_retries=0,

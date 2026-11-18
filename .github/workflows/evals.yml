@@ -1,0 +1,64 @@
+name: evals
+
+# The golden set against a real model, for changes that can move its answers. The run is
+# compared with evals/baseline.json, the report is commented on the pull request, and the
+# job fails when two or more cases that pass on main no longer do.
+on:
+  pull_request:
+    paths:
+      - backend/src/frontdesk/agent/**
+      - backend/src/frontdesk/tools/**
+      - backend/src/frontdesk/providers/**
+      - backend/src/frontdesk/policy/**
+      - backend/src/frontdesk/guardrail/**
+      - backend/src/frontdesk/domain/**
+      - evals/golden/**
+
+permissions:
+  contents: read
+  # To sign in to Azure as a federated identity, with no stored credential.
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-set:
+    # A pull request from a fork gets no identity to call the model with.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.11.19"
+          enable-cache: true
+      - run: uv sync --frozen
+      # The identity can call inference on one resource and nothing else.
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Run the golden set
+        env:
+          FRONTDESK_AZURE_OPENAI_ENDPOINT: ${{ vars.FRONTDESK_AZURE_OPENAI_ENDPOINT }}
+        run: uv run python scripts/run_evals.py --model gpt-oss-120b --out "$RUNNER_TEMP/run.json"
+      - name: Compare with the baseline of main
+        run: >
+          uv run python scripts/compare_evals.py
+          --run "$RUNNER_TEMP/run.json" --report "$RUNNER_TEMP/report.md"
+      - name: Comment the report on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f "$RUNNER_TEMP/report.md" ]; then
+            gh pr comment "$PULL_REQUEST" --body-file "$RUNNER_TEMP/report.md"
+          fi

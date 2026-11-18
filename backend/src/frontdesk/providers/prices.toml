@@ -30,6 +30,24 @@ reasoning = false
 input = "0.15"
 output = "0.60"
 
+[models."Llama-3.3-70B-Instruct"]
+# Foundry, Global Standard. Meters "Llama 3.3 70B Inp glbl" and "Outp glbl", per thousand.
+input = "0.71"
+output = "0.71"
+reasoning = false
+
+[models.Phi-4]
+# Foundry, Global Standard. Meters "Phi-4-Input Tokens" and "Phi-4-Output Tokens", per thousand.
+input = "0.125"
+output = "0.50"
+reasoning = false
+
+[models.Phi-4-mini-instruct]
+# Foundry, Global Standard. Meters "Phi-4-Mini-Input Tokens" and "Phi-4-Mini-Output Tokens".
+input = "0.075"
+output = "0.30"
+reasoning = false
+
 [models.offline]
 # The deterministic stand-in. It makes no billed call.
 reasoning = false
