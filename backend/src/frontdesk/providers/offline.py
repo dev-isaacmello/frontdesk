@@ -76,6 +76,10 @@ class OfflineProvider:
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
         if request.output_schema is not None:
+            if "findings" in request.output_schema.get("properties", {}):
+                # Reviewing the owner's rules takes judgment this stand-in does not have.
+                # The findings that come from code are still produced.
+                return _response(request, json.dumps({"findings": []}))
             customer_text = _normalize(request.messages[-1].content)
             return _response(
                 request, json.dumps({"in_scope": _in_scope(customer_text), "wants_human": False})

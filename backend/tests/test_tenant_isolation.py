@@ -1,5 +1,6 @@
 """Tenant isolation, exercised as the runtime database role against real PostgreSQL."""
 
+import psycopg
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
@@ -12,7 +13,7 @@ from frontdesk.db.session import (
     tenant_transaction,
 )
 from frontdesk.seed import ARENA, BARBERSHOP
-from tests.conftest import Database
+from tests.conftest import PLAN, Database
 
 COUNT_SERVICES = text("select count(*) from services")
 
@@ -88,3 +89,24 @@ async def test_ten_3_tenant_does_not_survive_on_a_pooled_connection(database: Da
 
     assert second_backend == first_backend
     assert visible == 0
+
+
+async def test_ten_1_every_table_with_a_tenant_has_forced_row_level_security(
+    database: Database,
+) -> None:
+    """A table added later cannot forget the policy: this reads the catalog, not a list."""
+    query = """
+        select c.relname::text
+        from pg_class c
+        join pg_attribute a on a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped
+        where c.relkind = 'r' and c.relnamespace = 'public'::regnamespace
+          and not (c.relrowsecurity and c.relforcerowsecurity
+                   and exists (select 1 from pg_policy p where p.polrelid = c.oid))
+        order by 1
+    """
+    with psycopg.connect(database.superuser_dsn, dbname=PLAN.database) as connection:
+        unprotected = [name for (name,) in connection.execute(query).fetchall()]
+
+    # channel_accounts is the documented exception: enabled but not forced, so that the
+    # function that finds a tenant before one is set can read it as the owner.
+    assert unprotected == ["channel_accounts"]

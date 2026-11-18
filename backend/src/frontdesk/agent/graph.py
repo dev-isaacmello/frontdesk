@@ -25,6 +25,7 @@ from frontdesk.agent.tool_runner import run_tool_call
 from frontdesk.agent.turn import HandoffReason, HistoryMessage, TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.clock import to_local
+from frontdesk.domain.rules import active_rules
 from frontdesk.domain.tenants import load_tenant, opening_hours, timezone_of
 from frontdesk.guardrail import Day, Sourced, facts_in
 from frontdesk.providers.ledger import ModelLedger
@@ -111,17 +112,21 @@ async def _load_context(state: _State, runtime: Runtime[AgentDeps]) -> _State:
     async with tenant_transaction(runtime.context.sessions, turn.tenant_id) as session:
         tenant = await load_tenant(session, turn.tenant_id)
         hours = await opening_hours(session, turn.tenant_id)
+        rules = await active_rules(session, turn.tenant_id)
     local_now = to_local(turn.now, timezone_of(tenant))
     today = local_now.date()
     context: _State = {
         "tenant_name": tenant.name,
-        "plan_system": prompts.plan_prompt(tenant.name, local_now, hours),
+        "plan_system": prompts.plan_prompt(
+            tenant.name, local_now, hours, rules.body if rules else None
+        ),
         "transcript": [*_history(turn), Message(role="user", content="\n".join(turn.messages))],
         "timezone": tenant.timezone,
         "today": today,
         "facts": [
             Sourced(Day(today), "profile"),
             *facts_in(prompts.opening_hours_text(hours), "profile", today=today),
+            *(facts_in(rules.body, "rules", today=today) if rules else ()),
             *_said_by_the_customer(turn, today),
         ],
     }

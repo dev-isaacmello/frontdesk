@@ -20,6 +20,8 @@ POSTGRES_IMAGE = "pgvector/pgvector:pg18"
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PLAN = BootstrapPlan(database="frontdesk", owner_password="owner", app_password="app")
 WRITTEN_BY_TESTS = (
+    "rule_findings",
+    "house_rules",
     "handoffs",
     "model_calls",
     "messages",

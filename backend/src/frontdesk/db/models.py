@@ -162,6 +162,31 @@ class Handoff(Base):
     resolved_at: Mapped[datetime | None]
 
 
+class HouseRules(Base):
+    """One version of the free text the owner writes. The newest is in force."""
+
+    __tablename__ = "house_rules"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    version: Mapped[int]
+    body: Mapped[str]
+    created_at: Mapped[datetime]
+
+
+class RuleFinding(Base):
+    """Where a version of the rules contradicts the policy enforced in code."""
+
+    __tablename__ = "rule_findings"
+
+    id: Mapped[UUID] = _generated_id()
+    tenant_id: Mapped[UUID]
+    house_rules_id: Mapped[UUID]
+    clause: Mapped[str]
+    excerpt: Mapped[str]
+    source: Mapped[str]
+
+
 class InboundEvent(Base):
     __tablename__ = "inbound_events"
 
@@ -209,7 +234,7 @@ class ModelCall(Base):
 
     id: Mapped[UUID] = _generated_id()
     tenant_id: Mapped[UUID]
-    turn_id: Mapped[UUID]
+    turn_id: Mapped[UUID | None]
     node: Mapped[str]
     provider: Mapped[str]
     model: Mapped[str]

@@ -65,7 +65,13 @@ class ModelLedger:
         self._prices = prices
 
     async def record(
-        self, *, tenant_id: UUID, turn_id: UUID, node: str, provider: str, response: ModelResponse
+        self,
+        *,
+        tenant_id: UUID,
+        turn_id: UUID | None,
+        node: str,
+        provider: str,
+        response: ModelResponse,
     ) -> None:
         """Writes the call in its own transaction, so it survives a turn that fails later."""
         usage = response.usage
