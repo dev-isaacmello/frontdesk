@@ -1,16 +1,16 @@
 {
-  "at": "2026-11-18T12:26:16+00:00",
+  "at": "2026-11-18T13:09:08+00:00",
   "scenario": "worker-killed",
   "customers": 6,
   "killed_after_s": 4.0,
   "unanswered_when_killed": 6,
-  "worker_down_s": 13.9,
-  "last_reply_after_restart_s": 172.7,
+  "worker_down_s": 14.1,
+  "last_reply_after_restart_s": 43.4,
   "answered": 6,
   "reply_time": {
-    "fastest_s": 186.2,
-    "median_s": 186.5,
-    "slowest_s": 190.8
+    "fastest_s": 61.5,
+    "median_s": 61.8,
+    "slowest_s": 62.0
   },
   "database": {
     "conversations": 6,
@@ -22,7 +22,7 @@
       "completed/replied": 6
     },
     "handoffs": {},
-    "model_calls": 40
+    "model_calls": 39
   },
   "passed": true
 }

@@ -18,7 +18,7 @@ A request the provider refuses as malformed is not retried and goes to a person 
 
 Whether it is the provider or us. From the worker's environment, the deployment answers or it does not; the Azure status page and the resource's metrics say which. `ModelThrottledError` alone is the quota of the deployment and not an outage.
 
-Throttling is the failure I can produce at will. The deployment of the demo allows 100 requests and 100,000 tokens a minute, a conversation spends three or four requests, and so about thirty conversations a minute is all it answers. With three customers at once every one was answered. With six, 17 were answered and 4 were handed to a person; with twelve, 24 and 4. The retries of a turn are spread over 30 seconds and the quota is counted over 60, so a turn can use all five attempts inside one window that is already spent, and every retry starts the turn over and spends requests again.
+Throttling is the failure I can produce at will. The deployment of the demo allows 100 requests and 100,000 tokens a minute, a conversation spends three or four requests, and so about thirty conversations a minute is all it answers. A throttled call is made again where it is, after the wait the provider asks, which for this deployment was under a second, for up to 20 seconds in all; only then does the turn fail and the worker retry it. `frontdesk_model_throttled_total` counts each refused call. With three, six and twelve customers at once every one was answered and none was handed to a person, with a p95 of 7, 28 and 51 seconds. Before the call was retried in place, a throttled call failed its whole turn, and at six customers 4 of 21 were handed to a person.
 
 ## What to do
 
@@ -32,7 +32,7 @@ From the next turn every conversation goes straight to a person, with no model c
 
 If one model is down and another deployment answers, point `FRONTDESK_MODEL` at it and restart the worker. The golden set says what to expect from each of the three that can do the job (docs/medicoes.md).
 
-If it is throttling, the load is above what the quota answers. Lower `FRONTDESK_WORKER_CONCURRENCY` so that fewer turns run at once and the rest wait in the queue, where they are slow and answered, or raise the deployment's capacity. What the code should do and does not: wait as long as the provider says in its answer before trying again.
+If it is throttling, the load is above what the quota answers, and customers are answered late and not lost. Lower `FRONTDESK_WORKER_CONCURRENCY` so that fewer turns run at once, or raise the deployment's capacity. What the code should do and does not: pace its own calls to the quota. It finds the limit by hitting it, and under the same quota six customers at once were answered at a little over half the rate of three.
 
 ## After it
 

@@ -34,7 +34,7 @@ For load, raise `FRONTDESK_WORKER_CONCURRENCY` or add a replica of the worker. T
 
 For a worker that is down, start it. Nothing is lost while it is down: the messages are in PostgreSQL and the triggers wait in the queue, for up to an hour. A trigger older than that expires; the message it pointed at is answered when the customer writes again, because a turn takes every waiting message of its conversation.
 
-How long the customers wait after it is back depends on where it died. Killed before its turns had started, twelve conversations were all answered within 5 seconds of the restart. Killed in the middle of six turns, all six were answered once, and the last one 173 seconds after the restart: a turn reserves its conversation for three minutes, nothing renews or releases that when the process dies, and the trigger that comes back waits for it to run out. `scripts/chaos.py worker-killed` is both rehearsals, and docs/medicoes.md has the numbers.
+How long the customers wait after it is back depends on where it died. Killed before its turns had started, twelve conversations were all answered within 5 seconds of the restart. Killed in the middle of six turns, all six were answered once, and the last one 43 seconds after the restart: a turn reserves its conversation for 45 seconds and renews that while it runs, so what a dead worker leaves behind is one reservation, and the trigger that comes back waits for it to run out. Before the renewal existed the reservation was three minutes and the same rehearsal took 173 seconds. `scripts/chaos.py worker-killed` is both rehearsals, and docs/medicoes.md has the numbers.
 
 ## After it
 

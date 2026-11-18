@@ -241,6 +241,26 @@ uv run python scripts/chaos.py worker-killed --customers 6 --kill-after 4 \
 
 The reports of the runs above are in [ops/load](../ops/load) and [ops/chaos](../ops/chaos). The real-model runs behind this entry, two of the load, one of the chaos and the messages that checked the traces, cost USD 0.15 of the subscription's credit by the ledger.
 
+## Phase 6, 2026-11-18, later: the two defects of the entry above, fixed and measured again
+
+What was measured. The same two scenarios that showed the defects, on the same machine and stack, after each change: the worker killed in the middle of six turns, and the load of 3, 6 and 12 customers at once on `gpt-oss-120b`.
+
+The dead worker. A turn reserved its conversation for three minutes and nothing renewed or released that. Now the reservation is 45 seconds and a running turn renews it every 15. With the worker killed four seconds into six turns, all six customers were answered, each exactly once, and the last one 43.4 s after the worker was back, where it had been 172.7 s. A customer whose worker dies in the middle of their turn now waits at most one reservation. Commit `fc91bd1`.
+
+Throttling, and a hypothesis the measurement refuted. I read the first result as a retry too short for the quota's minute, made the worker hold a throttled turn for as long as the provider asks, and ran the load again. Six customers: 28 answered and 2 handed to a person. Twelve: 20 and 2. No better than chance, and the log said why: in 84 throttled calls the wait Azure asked for was between 0.1 and 1.0 s, always under the two seconds the worker already waited. The quota is not a window to sit out.
+
+What was wrong was where the retry happened. A throttled call failed its turn, and the turn started over, spending again the calls that had already been answered while the deployment was over its rate. The call is now made again where it is, after the wait the provider asked, for up to 20 s in all before the turn fails as before. Commit `b199817`. The same load after it:
+
+- 3 customers: 37 answered, median 4,805 ms, p95 7,062 ms.
+- 6 customers: 25 answered and none handed to a person, median 16,728 ms, p95 27,616 ms. Before: 17 and 4, p95 47,357 ms.
+- 12 customers: 30 answered and none handed to a person, median 33,182 ms, p95 51,166 ms. Before: 24 and 4, p95 71,962 ms.
+
+No turn failed in the whole run. The provider refused 785 calls, which waited in place and were answered, and each is counted in `frontdesk_model_throttled_total`.
+
+What is still not right. Six and twelve customers got 0.30 replies per second and three got 0.54. More load, less answered: a refused call appears to count against the requests per minute, so asking again costs quota too. The next step is for the worker to pace its own calls to what the deployment allows instead of finding the limit by hitting it. I have not built that, and I have not confirmed in Azure's documentation that a refused call is counted.
+
+Reproduce. The commands of the entry above, at the commit named.
+
 ## Planned entries
 
 - Phase 5: actual monthly cost of the deployed environment against the estimate.

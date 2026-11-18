@@ -1,62 +1,62 @@
 {
-  "at": "2026-11-18T12:40:12+00:00",
+  "at": "2026-11-18T13:24:06+00:00",
   "levels": [
     {
       "customers": 3,
-      "seconds": 65.6,
-      "answered": 33,
+      "seconds": 67.9,
+      "answered": 37,
       "handed_to_a_person": 0,
       "unanswered": 0,
-      "replies_per_second": 0.5,
-      "p50_ms": 5024,
-      "p95_ms": 9046,
-      "max_ms": 9632
+      "replies_per_second": 0.54,
+      "p50_ms": 4805,
+      "p95_ms": 7062,
+      "max_ms": 10885
     },
     {
       "customers": 6,
-      "seconds": 98.5,
-      "answered": 17,
-      "handed_to_a_person": 4,
+      "seconds": 82.5,
+      "answered": 25,
+      "handed_to_a_person": 0,
       "unanswered": 0,
-      "replies_per_second": 0.17,
-      "p50_ms": 12449,
-      "p95_ms": 47357,
-      "max_ms": 47557
+      "replies_per_second": 0.3,
+      "p50_ms": 16728,
+      "p95_ms": 27616,
+      "max_ms": 33105
     },
     {
       "customers": 12,
-      "seconds": 106.9,
-      "answered": 24,
-      "handed_to_a_person": 4,
+      "seconds": 95.5,
+      "answered": 30,
+      "handed_to_a_person": 0,
       "unanswered": 0,
-      "replies_per_second": 0.22,
-      "p50_ms": 24049,
-      "p95_ms": 71962,
-      "max_ms": 77434
+      "replies_per_second": 0.31,
+      "p50_ms": 33182,
+      "p95_ms": 51166,
+      "max_ms": 54792
     }
   ],
   "lock_waits": {
-    "samples": 280,
+    "samples": 255,
     "samples_with_a_waiter": 0,
     "most_waiting_at_once": 0
   },
   "inside": {
     "node_p95_ms": {
-      "plan": 2560,
+      "classify": 11295,
+      "retrieve": 1843,
+      "plan": 11477,
       "gate": 10,
       "execute": 10,
       "validate": 10,
-      "load_context": 27,
-      "classify": 1277,
-      "retrieve": 1217
+      "load_context": 36
     },
     "model_call_p95_ms": {
-      "classify": 1277,
-      "retrieve": 1217,
-      "plan": 2560
+      "classify": 1265,
+      "retrieve": 1843,
+      "plan": 1211
     },
     "queue_wait_p95_ms": {
-      "all": 9909
+      "all": 29486
     }
   }
 }
