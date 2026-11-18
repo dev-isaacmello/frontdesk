@@ -51,7 +51,9 @@ def review(
         if word.lower() not in written_by_the_owner
     )
     problems.extend(
-        f"a resposta diz que algo foi {_CLAIM_WORDS[action]}, mas nenhuma ferramenta fez isso"
-        for action in sorted(unbacked_claims(reply, effects))
+        # The word is quoted so that the planner knows what to take out of its next draft.
+        f'"{word}": a resposta diz que algo foi {_CLAIM_WORDS[action]}, '
+        "mas nenhuma ferramenta fez isso; tire essa ideia da frase, não troque só a palavra"
+        for action, word in sorted(unbacked_claims(reply, effects).items())
     )
     return problems

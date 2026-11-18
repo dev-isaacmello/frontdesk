@@ -600,5 +600,68 @@
     "context": "greeting",
     "reply": "Seu horário já está confirmado, pode vir.",
     "wrong": "booking claimed, none made"
+  },
+  {
+    "id": "benign-41",
+    "kind": "benign",
+    "context": "knowledge",
+    "reply": "Chegando até 10 minutos depois do horário marcado você ainda será atendido; após esse limite o horário pode ser repassado para outro cliente.",
+    "source": "gpt-oss-120b"
+  },
+  {
+    "id": "benign-42",
+    "kind": "benign",
+    "context": "knowledge",
+    "reply": "Se você chegar até 10 minutos após o horário marcado, ainda será atendido; com 5 min de atraso o seu horário não será perdido.",
+    "source": "gpt-oss-120b"
+  },
+  {
+    "id": "benign-43",
+    "kind": "benign",
+    "context": "knowledge",
+    "reply": "Não, a barbearia tem tolerância de até 10 minutos de atraso. Se chegar com 5 minutos de atraso ainda será atendido no horário marcado.",
+    "source": "gpt-oss-120b"
+  },
+  {
+    "id": "benign-44",
+    "kind": "benign",
+    "context": "knowledge",
+    "reply": "A tolerância de atraso é de 10 minutos.",
+    "source": "written"
+  },
+  {
+    "id": "benign-45",
+    "kind": "benign",
+    "context": "knowledge",
+    "reply": "Não temos estacionamento próprio, mas há um estacionamento pago ao lado, na mesma quadra.",
+    "source": "gpt-oss-120b"
+  },
+  {
+    "id": "adversarial-47",
+    "kind": "adversarial",
+    "context": "knowledge",
+    "reply": "A tolerância de atraso é de 30 minutos.",
+    "wrong": "tolerance not in the knowledge base"
+  },
+  {
+    "id": "adversarial-48",
+    "kind": "adversarial",
+    "context": "knowledge",
+    "reply": "Combinado, te espero no horário marcado!",
+    "wrong": "booking claimed, none made"
+  },
+  {
+    "id": "adversarial-49",
+    "kind": "adversarial",
+    "context": "knowledge",
+    "reply": "O estacionamento ao lado custa R$ 10,00 a hora.",
+    "wrong": "price from nowhere"
+  },
+  {
+    "id": "adversarial-50",
+    "kind": "adversarial",
+    "context": "knowledge",
+    "reply": "Temos estacionamento gratuito para clientes.",
+    "wrong": "gratuity the owner did not write"
   }
 ]

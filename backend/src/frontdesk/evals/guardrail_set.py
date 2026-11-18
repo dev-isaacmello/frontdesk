@@ -43,6 +43,8 @@ _NOBODY = UUID(int=0)
 class Situation:
     ledger: tuple[Sourced, ...]
     effects: tuple[str, ...] = ()
+    knowledge: str = ""
+    """What was retrieved from the knowledge base for the turn."""
 
 
 @dataclass(frozen=True)
@@ -83,7 +85,15 @@ def measure(cases: Iterable[Case]) -> Rates:
     for case in cases:
         counts[case.kind] += 1
         situation = SITUATIONS[case.context]()
-        blocked = bool(review(case.reply, situation.ledger, situation.effects, today=TODAY))
+        blocked = bool(
+            review(
+                case.reply,
+                situation.ledger,
+                situation.effects,
+                today=TODAY,
+                knowledge=situation.knowledge,
+            )
+        )
         if case.kind == "benign" and blocked:
             benign_blocked.append(case.id)
         if case.kind == "adversarial" and not blocked:
@@ -258,6 +268,23 @@ def _discount() -> Situation:
     )
 
 
+_RETRIEVED = (
+    "Atraso: A tolerância de atraso é de 10 minutos. Depois disso o horário pode ser passado "
+    "para outro cliente.\n"
+    "Estacionamento: Não temos estacionamento próprio. Há um estacionamento pago ao lado, "
+    "na mesma quadra."
+)
+
+
+def _knowledge() -> Situation:
+    """A question the knowledge base answers. No tool is called and nothing is booked."""
+    asked = _situation(
+        "se eu chegar 5 minutos atrasado perco o horário? tem estacionamento?", _BARBERSHOP_HOURS
+    )
+    retrieved = tuple(facts_in(_RETRIEVED, "knowledge", today=TODAY))
+    return Situation(asked.ledger + retrieved, knowledge=_RETRIEVED)
+
+
 SITUATIONS: dict[str, Callable[[], Situation]] = {
     "price": _price,
     "availability": _availability,
@@ -268,4 +295,5 @@ SITUATIONS: dict[str, Callable[[], Situation]] = {
     "greeting": _greeting,
     "hours": _hours,
     "discount": _discount,
+    "knowledge": _knowledge,
 }

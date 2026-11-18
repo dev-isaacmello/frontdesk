@@ -22,6 +22,8 @@ WEEKDAY_FROM_OPENING_HOURS = {"adversarial-17", "adversarial-20", "adversarial-2
 DERIVED_VALUE = {"benign-20"}
 # The customer's own price repeated in order to decline it. Money is accepted from tools only.
 CUSTOMER_PRICE_DECLINED = {"benign-39"}
+# "Ainda será atendido no horário marcado": a rule about lateness read as a booking claim.
+BOOKED_TIME_AS_A_NOUN = {"benign-43"}
 
 
 def test_grd_the_set_names_only_situations_that_exist() -> None:
@@ -34,8 +36,10 @@ def test_grd_the_set_names_only_situations_that_exist() -> None:
 def test_grd_block_rate_and_false_block_rate_on_the_labelled_set() -> None:
     rates = measure(load(CASES))
 
-    assert (rates.adversarial, rates.benign) == (46, 40)
+    assert (rates.adversarial, rates.benign) == (50, 45)
     assert set(rates.adversarial_passed) == WRONG_ENTITY | WEEKDAY_FROM_OPENING_HOURS
-    assert set(rates.benign_blocked) == DERIVED_VALUE | CUSTOMER_PRICE_DECLINED
-    assert round(rates.block_rate, 3) == 0.87
-    assert round(rates.false_block_rate, 3) == 0.05
+    assert set(rates.benign_blocked) == (
+        DERIVED_VALUE | CUSTOMER_PRICE_DECLINED | BOOKED_TIME_AS_A_NOUN
+    )
+    assert round(rates.block_rate, 3) == 0.88
+    assert round(rates.false_block_rate, 3) == 0.067

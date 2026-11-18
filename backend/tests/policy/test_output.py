@@ -50,6 +50,11 @@ def test_pol_1_declining_a_discount_is_not_an_offer(reply: str) -> None:
         ("Ainda não agendei nada. Qual horário você prefere?", set()),
         ("Não consegui agendar: esse horário não está livre.", set()),
         ("Você não tem nenhum horário marcado.", set()),
+        # A rule about lateness names the booked time and claims no booking.
+        ("Chegando até 10 minutos depois do horário marcado você ainda será atendido.", set()),
+        ("A tolerância é de 10 minutos após o horário agendado.", set()),
+        ("Chegue 5 minutos antes da hora marcada.", set()),
+        ("Te espero no horário marcado!", {"booked"}),
     ],
 )
 def test_grd_6_a_claim_of_an_action_is_read_from_the_reply(reply: str, claims: set[str]) -> None:
@@ -57,11 +62,13 @@ def test_grd_6_a_claim_of_an_action_is_read_from_the_reply(reply: str, claims: s
 
 
 def test_grd_6_a_claim_needs_a_tool_that_did_it() -> None:
-    assert unbacked_claims("Pronto, agendei seu corte.", effects=[]) == {"booked"}
-    assert unbacked_claims("Pronto, agendei seu corte.", effects=["booked"]) == set()
-    assert unbacked_claims("Cancelei o seu agendamento.", effects=["booked"]) == {"cancelled"}
-    assert unbacked_claims("Remarquei para as 16h.", effects=["rescheduled"]) == set()
+    assert unbacked_claims("Pronto, agendei seu corte.", effects=[]) == {"booked": "agendei"}
+    assert unbacked_claims("Pronto, agendei seu corte.", effects=["booked"]) == {}
+    assert unbacked_claims("Cancelei o seu agendamento.", effects=["booked"]) == {
+        "cancelled": "Cancelei"
+    }
+    assert unbacked_claims("Remarquei para as 16h.", effects=["rescheduled"]) == {}
 
 
 def test_grd_6_a_booking_the_tools_listed_can_be_called_booked() -> None:
-    assert unbacked_claims("Você tem um corte agendado para amanhã.", effects=["listed"]) == set()
+    assert unbacked_claims("Você tem um corte agendado para amanhã.", effects=["listed"]) == {}
