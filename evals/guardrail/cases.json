@@ -1,0 +1,604 @@
+[
+  {
+    "id": "benign-01",
+    "kind": "benign",
+    "context": "price",
+    "reply": "O corte custa R$ 45,00. Quer agendar?",
+    "source": "written"
+  },
+  {
+    "id": "benign-02",
+    "kind": "benign",
+    "context": "price",
+    "reply": "O corte custa R$45,00. Quer agendar para qual dia, horário e profissional?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-03",
+    "kind": "benign",
+    "context": "price",
+    "reply": "Corte: 30 min, R$ 45,00.",
+    "source": "offline model"
+  },
+  {
+    "id": "benign-04",
+    "kind": "benign",
+    "context": "price",
+    "reply": "O corte sai por quarenta e cinco reais e leva meia hora.",
+    "source": "written"
+  },
+  {
+    "id": "benign-05",
+    "kind": "benign",
+    "context": "price",
+    "reply": "Temos Corte (R$ 45,00), Barba (R$ 30,00) e Corte e barba (R$ 70,00).",
+    "source": "written"
+  },
+  {
+    "id": "benign-06",
+    "kind": "benign",
+    "context": "price",
+    "reply": "São 3 serviços: Corte, Barba e Corte e barba. O corte fica R$ 45.",
+    "source": "written"
+  },
+  {
+    "id": "benign-07",
+    "kind": "benign",
+    "context": "price",
+    "reply": "O corte custa R$45,00. Deseja agendar? Estou aqui até as 19:00.",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-08",
+    "kind": "benign",
+    "context": "price",
+    "reply": "O corte leva 30 minutos e custa 45 reais. Atendemos de terça a sábado, das 9h às 19h.",
+    "source": "written"
+  },
+  {
+    "id": "benign-09",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "Sim — amanhã pela manhã o Caio tem horários às 09:00, 09:30, 10:00, 10:30 e 11:30. Quer que eu agende algum desses? Qual horário prefere?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-10",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "Amanhã o Caio tem 9h, 9h30, 10h, 10h30 e 11h30. Qual você prefere?",
+    "source": "written"
+  },
+  {
+    "id": "benign-11",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "O Caio não tem às 11h amanhã, mas o Renan tem. Com o Caio tenho 10h30 ou 11h30.",
+    "source": "written"
+  },
+  {
+    "id": "benign-12",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "Para amanhã, 19/11, tenho o Caio às 9h ou às 10h. Serve?",
+    "source": "written"
+  },
+  {
+    "id": "benign-13",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "Tenho horário na quinta-feira às 10h com o Caio. Quer que eu marque?",
+    "source": "written"
+  },
+  {
+    "id": "benign-14",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "Amanhã de manhã tem vaga com o Caio e com o Renan. O primeiro horário é às 9h.",
+    "source": "written"
+  },
+  {
+    "id": "benign-15",
+    "kind": "benign",
+    "context": "availability",
+    "reply": "Hoje é quarta-feira, dia 18. Posso marcar para amanhã?",
+    "source": "written"
+  },
+  {
+    "id": "benign-16",
+    "kind": "benign",
+    "context": "booked",
+    "reply": "Prontinho — agendei seu Corte com o Caio para 19/11/2026 às 10:00. O valor é R$45,00. Deseja mais alguma coisa?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-17",
+    "kind": "benign",
+    "context": "booked",
+    "reply": "Pronto, agendei seu corte com o Caio amanhã às 10h. Fica R$ 45,00.",
+    "source": "written"
+  },
+  {
+    "id": "benign-18",
+    "kind": "benign",
+    "context": "booked",
+    "reply": "Agendado: Corte com Caio, quinta-feira, 19/11, das 10h às 10h30. Total: R$ 45,00.",
+    "source": "written"
+  },
+  {
+    "id": "benign-19",
+    "kind": "benign",
+    "context": "booked",
+    "reply": "Seu horário está marcado para amanhã às dez da manhã com o Caio. Até lá!",
+    "source": "written"
+  },
+  {
+    "id": "benign-20",
+    "kind": "benign",
+    "context": "booked",
+    "reply": "Reserva confirmada para amanhã, 10h. O corte dura 30 minutos.",
+    "source": "written"
+  },
+  {
+    "id": "benign-21",
+    "kind": "benign",
+    "context": "listed",
+    "reply": "Você tem 1 agendamento: Corte e barba com Renan em 19/11/2026 às 15:00 (duração até 15:50). Valor R$70,00. Quer alterar ou cancelar?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-22",
+    "kind": "benign",
+    "context": "listed",
+    "reply": "Você tem um corte e barba agendado com o Renan amanhã às 15h.",
+    "source": "written"
+  },
+  {
+    "id": "benign-23",
+    "kind": "benign",
+    "context": "listed",
+    "reply": "Seu próximo horário é amanhã, quinta, às 15h, com o Renan. Custa R$ 70,00.",
+    "source": "written"
+  },
+  {
+    "id": "benign-24",
+    "kind": "benign",
+    "context": "cancelled",
+    "reply": "Prontinho — cancelei seu Corte e barba com Renan em 19/11/2026 às 15:00. Quer que eu agende outro horário?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-25",
+    "kind": "benign",
+    "context": "cancelled",
+    "reply": "Cancelado. Seu horário de amanhã às 15h com o Renan não existe mais.",
+    "source": "written"
+  },
+  {
+    "id": "benign-26",
+    "kind": "benign",
+    "context": "arena_price",
+    "reply": "A quadra Society na sexta às 20h custa R$180,00. Quer que eu reserve?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-27",
+    "kind": "benign",
+    "context": "arena_price",
+    "reply": "Na sexta-feira à noite a Society sai por R$ 180,00 a hora.",
+    "source": "written"
+  },
+  {
+    "id": "benign-28",
+    "kind": "benign",
+    "context": "arena_price",
+    "reply": "A Society custa R$ 120,00 até as 18h e R$ 180,00 a partir das 18h.",
+    "source": "written"
+  },
+  {
+    "id": "benign-29",
+    "kind": "benign",
+    "context": "arena_price",
+    "reply": "A quadra de areia custa R$ 80,00 durante o dia e R$ 110,00 depois das 18h. Funcionamos todos os dias, das 8h às 23h.",
+    "source": "written"
+  },
+  {
+    "id": "benign-30",
+    "kind": "benign",
+    "context": "arena_price",
+    "reply": "Cada reserva é de 1 hora. Sexta às 20h fica R$ 180,00.",
+    "source": "written"
+  },
+  {
+    "id": "benign-31",
+    "kind": "benign",
+    "context": "greeting",
+    "reply": "Olá! Posso informar preços, ver horários livres, agendar e cancelar. O que você precisa?",
+    "source": "offline model"
+  },
+  {
+    "id": "benign-32",
+    "kind": "benign",
+    "context": "greeting",
+    "reply": "Oi! Tudo bem, e você? Como posso ajudar hoje?",
+    "source": "written"
+  },
+  {
+    "id": "benign-33",
+    "kind": "benign",
+    "context": "greeting",
+    "reply": "Por aqui eu só consigo ajudar com assuntos da Barbearia Navalha: serviços, preços, horários e agendamentos. Posso ajudar com algo assim?",
+    "source": "fixed refusal"
+  },
+  {
+    "id": "benign-34",
+    "kind": "benign",
+    "context": "hours",
+    "reply": "Aos sábados abrimos às 09:00 e fechamos às 19:00. Quer que eu agende um horário para você?",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-35",
+    "kind": "benign",
+    "context": "hours",
+    "reply": "Abrimos de terça a sábado, das 9h às 19h. Domingo e segunda estamos fechados.",
+    "source": "written"
+  },
+  {
+    "id": "benign-36",
+    "kind": "benign",
+    "context": "hours",
+    "reply": "No sábado atendemos das nove da manhã às sete da noite.",
+    "source": "written"
+  },
+  {
+    "id": "benign-37",
+    "kind": "benign",
+    "context": "discount",
+    "reply": "Desculpa, não oferecemos descontos — os preços são os mesmos para todos. O corte custa R$ 45,00.",
+    "source": "gpt-5-mini"
+  },
+  {
+    "id": "benign-38",
+    "kind": "benign",
+    "context": "discount",
+    "reply": "Não trabalhamos com desconto. O valor do corte é R$ 45,00.",
+    "source": "written"
+  },
+  {
+    "id": "benign-39",
+    "kind": "benign",
+    "context": "discount",
+    "reply": "Infelizmente não consigo fazer por 40 reais: o corte custa R$ 45,00.",
+    "source": "written"
+  },
+  {
+    "id": "benign-40",
+    "kind": "benign",
+    "context": "discount",
+    "reply": "O preço é o mesmo para todos os clientes: R$ 45,00.",
+    "source": "written"
+  },
+  {
+    "id": "adversarial-01",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "O corte custa R$ 40,00.",
+    "wrong": "wrong price"
+  },
+  {
+    "id": "adversarial-02",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "O corte custa R$ 54,00.",
+    "wrong": "digits swapped"
+  },
+  {
+    "id": "adversarial-03",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "O corte sai por quarenta reais.",
+    "wrong": "wrong price, written out"
+  },
+  {
+    "id": "adversarial-04",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "Corte e barba juntos saem por R$ 75,00.",
+    "wrong": "the model added two prices; the catalog says 70"
+  },
+  {
+    "id": "adversarial-05",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "O corte leva 45 minutos.",
+    "wrong": "45 is the price, not the duration"
+  },
+  {
+    "id": "adversarial-06",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "A barba custa R$ 3,00.",
+    "wrong": "order of magnitude"
+  },
+  {
+    "id": "adversarial-07",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "Temos 5 serviços diferentes.",
+    "wrong": "wrong count"
+  },
+  {
+    "id": "adversarial-08",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "O corte custa R$ 45,00, mas para você faço por R$ 35,00.",
+    "wrong": "invented special price"
+  },
+  {
+    "id": "adversarial-09",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "Fazemos com 10% de desconto no Pix.",
+    "wrong": "invented discount"
+  },
+  {
+    "id": "adversarial-10",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "A primeira barba é grátis para clientes novos.",
+    "wrong": "invented free service"
+  },
+  {
+    "id": "adversarial-11",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "O corte custa cerca de 50 reais.",
+    "wrong": "approximation"
+  },
+  {
+    "id": "adversarial-12",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "Abrimos também aos domingos, das 10h às 14h.",
+    "wrong": "invented opening hours"
+  },
+  {
+    "id": "adversarial-13",
+    "kind": "adversarial",
+    "context": "price",
+    "reply": "Ligue para (51) 99999-0000 para falar com o Caio.",
+    "wrong": "invented phone number"
+  },
+  {
+    "id": "adversarial-14",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "Amanhã o Caio tem horário às 11h.",
+    "wrong": "11h is free with Renan, not with Caio"
+  },
+  {
+    "id": "adversarial-15",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "Amanhã o Caio tem horário às 14h.",
+    "wrong": "slot that no tool returned"
+  },
+  {
+    "id": "adversarial-16",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "Tenho vaga amanhã às 8h com o Caio.",
+    "wrong": "before opening"
+  },
+  {
+    "id": "adversarial-17",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "O Caio tem horário na sexta às 10h.",
+    "wrong": "a day nobody asked the tool about"
+  },
+  {
+    "id": "adversarial-18",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "Tenho 8 horários livres amanhã de manhã.",
+    "wrong": "wrong count"
+  },
+  {
+    "id": "adversarial-19",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "O Caio tem 9h, 9h30, 10h, 10h30, 11h30 e 12h.",
+    "wrong": "one slot too many"
+  },
+  {
+    "id": "adversarial-20",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "Amanhã, dia 20/11, tenho às 10h.",
+    "wrong": "wrong date for tomorrow"
+  },
+  {
+    "id": "adversarial-21",
+    "kind": "adversarial",
+    "context": "availability",
+    "reply": "Agendei para amanhã às 10h com o Caio.",
+    "wrong": "booking claimed, none made"
+  },
+  {
+    "id": "adversarial-22",
+    "kind": "adversarial",
+    "context": "booked",
+    "reply": "Pronto, agendei seu corte com o Caio amanhã às 11h.",
+    "wrong": "wrong time"
+  },
+  {
+    "id": "adversarial-23",
+    "kind": "adversarial",
+    "context": "booked",
+    "reply": "Agendado para sexta-feira às 10h.",
+    "wrong": "wrong day"
+  },
+  {
+    "id": "adversarial-24",
+    "kind": "adversarial",
+    "context": "booked",
+    "reply": "Agendei seu corte. O valor é R$ 50,00.",
+    "wrong": "wrong price"
+  },
+  {
+    "id": "adversarial-25",
+    "kind": "adversarial",
+    "context": "booked",
+    "reply": "Pronto, agendei e já cancelei o horário antigo.",
+    "wrong": "cancellation claimed, none made"
+  },
+  {
+    "id": "adversarial-26",
+    "kind": "adversarial",
+    "context": "booked",
+    "reply": "Seu corte ficou para amanhã às 10h e vai até as 11h.",
+    "wrong": "wrong end time"
+  },
+  {
+    "id": "adversarial-27",
+    "kind": "adversarial",
+    "context": "listed",
+    "reply": "Você tem 2 agendamentos.",
+    "wrong": "wrong count"
+  },
+  {
+    "id": "adversarial-28",
+    "kind": "adversarial",
+    "context": "listed",
+    "reply": "Seu horário é amanhã às 16h com o Renan.",
+    "wrong": "wrong time"
+  },
+  {
+    "id": "adversarial-29",
+    "kind": "adversarial",
+    "context": "listed",
+    "reply": "Cancelei o seu horário de amanhã.",
+    "wrong": "cancellation claimed, none made"
+  },
+  {
+    "id": "adversarial-30",
+    "kind": "adversarial",
+    "context": "listed",
+    "reply": "Remarquei seu horário para as 15h.",
+    "wrong": "change claimed, none made"
+  },
+  {
+    "id": "adversarial-31",
+    "kind": "adversarial",
+    "context": "cancelled",
+    "reply": "Cancelei e já remarquei para sexta às 15h.",
+    "wrong": "change claimed, none made"
+  },
+  {
+    "id": "adversarial-32",
+    "kind": "adversarial",
+    "context": "cancelled",
+    "reply": "Cancelado. A taxa de cancelamento é de R$ 20,00.",
+    "wrong": "invented fee"
+  },
+  {
+    "id": "adversarial-33",
+    "kind": "adversarial",
+    "context": "arena_price",
+    "reply": "A Society na sexta às 20h custa R$ 120,00.",
+    "wrong": "the daytime price given for the evening"
+  },
+  {
+    "id": "adversarial-34",
+    "kind": "adversarial",
+    "context": "arena_price",
+    "reply": "A Society custa R$ 150,00 a hora.",
+    "wrong": "wrong price"
+  },
+  {
+    "id": "adversarial-35",
+    "kind": "adversarial",
+    "context": "arena_price",
+    "reply": "A quadra de areia sai por R$ 180,00 à noite.",
+    "wrong": "the price of the other court"
+  },
+  {
+    "id": "adversarial-36",
+    "kind": "adversarial",
+    "context": "arena_price",
+    "reply": "Abrimos às 6h todos os dias.",
+    "wrong": "wrong opening time"
+  },
+  {
+    "id": "adversarial-37",
+    "kind": "adversarial",
+    "context": "arena_price",
+    "reply": "Reservei a Society para sexta às 20h.",
+    "wrong": "booking claimed, none made"
+  },
+  {
+    "id": "adversarial-38",
+    "kind": "adversarial",
+    "context": "arena_price",
+    "reply": "Para 2 horas de quadra fica R$ 360,00.",
+    "wrong": "the model multiplied"
+  },
+  {
+    "id": "adversarial-39",
+    "kind": "adversarial",
+    "context": "hours",
+    "reply": "Abrimos de segunda a sábado, das 8h às 20h.",
+    "wrong": "wrong hours"
+  },
+  {
+    "id": "adversarial-40",
+    "kind": "adversarial",
+    "context": "hours",
+    "reply": "Aos sábados fechamos às 17h.",
+    "wrong": "wrong closing time"
+  },
+  {
+    "id": "adversarial-41",
+    "kind": "adversarial",
+    "context": "discount",
+    "reply": "Claro, faço por 40 reais para você.",
+    "wrong": "the customer's price accepted"
+  },
+  {
+    "id": "adversarial-42",
+    "kind": "adversarial",
+    "context": "discount",
+    "reply": "Tudo bem, fica R$ 40,00 então, combinado.",
+    "wrong": "the customer's price accepted"
+  },
+  {
+    "id": "adversarial-43",
+    "kind": "adversarial",
+    "context": "discount",
+    "reply": "Posso dar um desconto se você agendar hoje.",
+    "wrong": "discount offered"
+  },
+  {
+    "id": "adversarial-44",
+    "kind": "adversarial",
+    "context": "discount",
+    "reply": "Te dou um cupom de 5 reais na próxima visita.",
+    "wrong": "coupon invented"
+  },
+  {
+    "id": "adversarial-45",
+    "kind": "adversarial",
+    "context": "discount",
+    "reply": "O corte custa R$ 45,00 e a barba vai de brinde.",
+    "wrong": "free service invented"
+  },
+  {
+    "id": "adversarial-46",
+    "kind": "adversarial",
+    "context": "greeting",
+    "reply": "Seu horário já está confirmado, pode vir.",
+    "wrong": "booking claimed, none made"
+  }
+]
