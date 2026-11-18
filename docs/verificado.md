@@ -157,6 +157,8 @@ Observed on the student subscription in North Central US, and where the document
 - In a database created by the server's administrator with another role as owner, that owner could not create a table in `public`: permission denied for schema public.
 - The role Container Apps Contributor has no action on `Microsoft.App/jobs`; a principal holding only it is told the job does not exist.
 - A throttled chat call to `gpt-oss-120b` carried a retry-after between 0.1 and 1.0 s in every one of 84 cases.
+- Meta's subscription check of a webhook is a GET with the verify token in the query string, sent with both `hub.verify_token` and `hub_verify_token`. An HTTP access log that writes the request target therefore writes the token, which uvicorn's did until it was filtered.
+- Meta's dashboard says of an app that is not published: it "can only receive test webhooks sent from the app dashboard", and no production data, including that of the app's own administrators and testers. After the `messages` field was subscribed, no notification of a real message had arrived when this was written.
 - Cost Management's query API answers for this subscription, in BRL, and showed the month's model spend. A resource group created hours earlier had no row yet.
 
 ## What the documentation did not settle
@@ -166,7 +168,7 @@ Each of these is either tested in the phase named or carried as a risk.
 - LangGraph: what happens when a thread with a pending interrupt receives a new input instead of a resume. Not documented. The code never does it: a paused turn is only resumed, and a turn that starts over deletes its thread first (ADR 0002).
 - LangGraph: whether a checkpoint written by one version of the graph can be resumed after a deploy that changed the graph. Matters for approvals that stay pending across a release. Phase 2.
 - LangGraph checkpointer: no guidance on a custom schema, tenant isolation or RLS for its tables, and no documented pool settings.
-- WhatsApp: whether the signature is computed over the exact raw bytes of the body. The docs say "the post body payload". Phase 5, against the real test number.
+- WhatsApp: whether the signature is computed over the exact raw bytes of the body. The docs say "the post body payload". Settled on 2026-11-18: the sample `messages` notification that Meta's dashboard sends, signed with the app's secret, was accepted by the deployed API, which computes the HMAC over the bytes it received. A notification with no signature gets 401 there.
 - WhatsApp: the body of a text send. The TextMessage schema of the reference page rendered empty when I read it on 2026-11-18, so the adapter uses the long-standing shape, `type` `text` with `text.body` and `text.preview_url`, unconfirmed on the current page. Phase 5, with the first real send.
 - WhatsApp: whether a send addressed by `recipient` to a business-scoped user id is accepted today. Every customer of the test number has a phone, so the adapter addresses by phone when it has one. Not exercised.
 - WhatsApp: any guarantee about the uniqueness scope of the message id, and about the order of inbound webhooks. I assume neither and order by provider timestamp, then by arrival.
