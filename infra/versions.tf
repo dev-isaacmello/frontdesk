@@ -28,6 +28,7 @@ provider "azurerm" {
     "Microsoft.App",
     "Microsoft.ContainerRegistry",
     "Microsoft.DBforPostgreSQL",
+    "Microsoft.Insights",
     "Microsoft.KeyVault",
     "Microsoft.ManagedIdentity",
     "Microsoft.OperationalInsights",
