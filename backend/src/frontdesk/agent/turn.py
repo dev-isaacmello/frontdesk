@@ -35,3 +35,6 @@ class TurnResult:
     reply: str
     handoff_reason: HandoffReason | None = None
     """Why the conversation goes to a person. Set when the outcome is handoff."""
+
+    blocks: int = 0
+    """How many drafts of the reply the checks refused before this result."""

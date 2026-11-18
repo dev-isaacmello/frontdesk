@@ -1,6 +1,7 @@
 """What a worker does with one trigger."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -12,6 +13,8 @@ from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain import conversations
 from frontdesk.domain.customers import Channel
 from frontdesk.queue.triggers import Trigger
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,16 @@ async def handle(deps: WorkerDeps, trigger: Trigger) -> None:
     if turn is not None:
         try:
             result = await run_turn(deps.agent, turn)
+            log.info(
+                "turn_finished",
+                extra={
+                    "tenant_id": str(trigger.tenant_id),
+                    "conversation_id": str(trigger.conversation_id),
+                    "outcome": result.outcome,
+                    "handoff_reason": result.handoff_reason,
+                    "blocked_drafts": result.blocks,
+                },
+            )
             async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
                 await conversations.close_turn(
                     session, trigger.conversation_id, turn, result, deps.clock()
