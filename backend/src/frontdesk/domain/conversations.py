@@ -27,9 +27,10 @@ from frontdesk.domain.customers import Channel, ChannelIdentity, identify_custom
 from frontdesk.domain.text import storable, storable_json
 
 _HISTORY_WINDOW = 20
-_LEASE = timedelta(minutes=3)
-"""How long a worker may hold a conversation without finishing. Past it, another worker
-takes over, and the first one's final write is refused."""
+LEASE = timedelta(seconds=45)
+"""How long a worker holds a conversation without saying it is still alive. A running turn
+renews it; past it another worker takes over, and the first one's final write is refused.
+It is also how long a customer waits for a worker that died in the middle of their turn."""
 
 
 class ConversationBusyError(Exception):
@@ -224,7 +225,7 @@ async def _take(
 ) -> TurnInput:
     """Leases the conversation to the caller and describes the turn it is to run."""
     conversation.lease_epoch += 1
-    conversation.lease_until = now + _LEASE
+    conversation.lease_until = now + LEASE
     lines = await _lines(session, conversation.id)
     return TurnInput(
         tenant_id=conversation.tenant_id,
@@ -338,6 +339,23 @@ async def release_lease(session: AsyncSession, conversation_id: UUID, epoch: int
         update(Conversation)
         .where(Conversation.id == conversation_id, Conversation.lease_epoch == epoch)
         .values(lease_until=None)
+        .returning(Conversation.id)
+    )
+    return held is not None
+
+
+async def renew_lease(
+    session: AsyncSession, conversation_id: UUID, epoch: int, now: datetime
+) -> bool:
+    """Holds the conversation for another lease if this epoch still has it."""
+    held = await session.scalar(
+        update(Conversation)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.lease_epoch == epoch,
+            Conversation.lease_until.is_not(None),
+        )
+        .values(lease_until=now + LEASE)
         .returning(Conversation.id)
     )
     return held is not None

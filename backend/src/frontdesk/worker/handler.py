@@ -3,13 +3,14 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
 from opentelemetry.trace import SpanKind
 
-from frontdesk import metrics, telemetry
+from frontdesk import logs, metrics, telemetry
 from frontdesk.agent import prompts
 from frontdesk.agent.graph import AgentDeps, resume_turn, run_turn
 from frontdesk.agent.turn import TurnInput, TurnResult
@@ -33,6 +34,10 @@ class WorkerDeps:
     short messages is answered once."""
 
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+
+    lease_renewal: timedelta = conversations.LEASE / 3
+    """How often a running turn says it is still alive. A third of the lease, so that two
+    renewals may fail before another worker takes the conversation."""
 
 
 _MAX_QUIET_WAITS = 5
@@ -100,8 +105,14 @@ async def _run(
     resumed_approval: UUID | None = None,
 ) -> None:
     """Awaits a turn and writes its result under the lease the turn was opened with."""
+    alive = asyncio.create_task(_keep_lease(deps, trigger, turn))
     try:
-        result = await running
+        try:
+            result = await running
+        finally:
+            alive.cancel()
+            with suppress(asyncio.CancelledError):
+                await alive
         log.info(
             "turn_finished",
             extra={
@@ -125,6 +136,35 @@ async def _run(
         async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
             await conversations.release_lease(session, trigger.conversation_id, turn.lease_epoch)
         raise
+
+
+async def _keep_lease(deps: WorkerDeps, trigger: Trigger, turn: TurnInput) -> None:
+    """Renews the lease while the turn runs, so that the lease can be short.
+
+    A worker that dies stops renewing, and its conversation is free again within one
+    lease instead of the longest a turn may take.
+    """
+    while True:
+        await asyncio.sleep(deps.lease_renewal.total_seconds())
+        try:
+            async with tenant_transaction(deps.sessions, trigger.tenant_id) as session:
+                held = await conversations.renew_lease(
+                    session, trigger.conversation_id, turn.lease_epoch, deps.clock()
+                )
+        except Exception as error:
+            # The next renewal may work. If none does, another worker takes the
+            # conversation and this turn's final write is refused.
+            log.warning(
+                "lease_renewal_failed",
+                extra={
+                    "tenant_id": str(trigger.tenant_id),
+                    "conversation_id": str(trigger.conversation_id),
+                    **logs.failure(error),
+                },
+            )
+            continue
+        if not held:
+            return
 
 
 async def _let_a_burst_finish(deps: WorkerDeps, trigger: Trigger) -> None:

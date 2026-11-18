@@ -1,5 +1,6 @@
 """ING-4 and ING-5: one worker per conversation, and a burst of messages as one turn."""
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -9,10 +10,12 @@ import pytest
 from frontdesk.agent.turn import TurnInput, TurnResult
 from frontdesk.db.session import SessionFactory, tenant_transaction
 from frontdesk.domain.conversations import (
+    LEASE,
     ConversationBusyError,
     StaleLeaseError,
     close_turn,
     open_turn,
+    renew_lease,
     transcript,
 )
 from frontdesk.providers.port import ModelRequest, ModelResponse
@@ -20,7 +23,7 @@ from frontdesk.providers.scripted import says
 from frontdesk.queue.triggers import Trigger
 from frontdesk.seed import BARBERSHOP
 from frontdesk.worker.handler import handle
-from tests.support import IN_SCOPE, RecordingSender, say, scripted_worker
+from tests.support import IN_SCOPE, RecordingSender, conversation_row, say, scripted_worker
 from tests.tools.conftest import NOW
 
 LATER = NOW + timedelta(minutes=10)
@@ -33,6 +36,11 @@ async def opened(
         return await open_turn(session, conversation_id, now)
 
 
+async def lease_until(sessions: SessionFactory, conversation_id: UUID) -> datetime:
+    until: datetime = (await conversation_row(sessions, conversation_id))["lease_until"]
+    return until
+
+
 async def test_ing_4_a_conversation_being_handled_is_not_taken_by_a_second_worker(
     sessions: SessionFactory,
 ) -> None:
@@ -43,6 +51,86 @@ async def test_ing_4_a_conversation_being_handled_is_not_taken_by_a_second_worke
         await opened(sessions, receipt.conversation_id, NOW + timedelta(seconds=30))
 
     assert first is not None
+
+
+async def test_ing_4_a_worker_that_died_holds_its_conversation_for_under_a_minute(
+    sessions: SessionFactory,
+) -> None:
+    """Killed in the middle of six turns, a worker cost its customers three minutes."""
+    receipt = await say(sessions, "oi", "m1")
+    dead = await opened(sessions, receipt.conversation_id, NOW)
+
+    taker = await opened(sessions, receipt.conversation_id, NOW + timedelta(seconds=59))
+
+    assert dead is not None
+    assert taker is not None
+    assert timedelta(seconds=59) > LEASE
+    assert taker.lease_epoch == dead.lease_epoch + 1
+
+
+async def test_ing_4_a_turn_that_is_still_running_keeps_its_conversation(
+    sessions: SessionFactory,
+) -> None:
+    class Slow:
+        """A model that answers only when the test lets it."""
+
+        name = "slow"
+
+        def __init__(self) -> None:
+            self.reached = asyncio.Event()
+            self.released = asyncio.Event()
+            self.calls = 0
+
+        async def complete(self, _request: ModelRequest) -> ModelResponse:
+            self.calls += 1
+            self.reached.set()
+            await self.released.wait()
+            return IN_SCOPE if self.calls == 1 else says("Oi, Ana!")
+
+    sender = RecordingSender()
+    slow = Slow()
+    deps, _ = scripted_worker(sessions, sender)
+    clock = [NOW]
+    deps = replace(
+        deps,
+        agent=replace(deps.agent, provider=slow),
+        clock=lambda: clock[0],
+        lease_renewal=timedelta(milliseconds=20),
+    )
+    receipt = await say(sessions, "oi", "m1")
+    trigger = Trigger(tenant_id=BARBERSHOP.id, conversation_id=receipt.conversation_id)
+
+    running = asyncio.create_task(handle(deps, trigger))
+    await slow.reached.wait()
+    # The turn has been running for longer than one lease, and renewed it on the way.
+    much_later = NOW + LEASE + timedelta(seconds=30)
+    clock[0] = much_later
+    async with asyncio.timeout(5):
+        # The renewal is a row in the database: there is nothing to wait on but the row.
+        while await lease_until(sessions, receipt.conversation_id) < much_later:  # noqa: ASYNC110
+            await asyncio.sleep(0.02)
+
+    with pytest.raises(ConversationBusyError):
+        await opened(sessions, receipt.conversation_id, much_later)
+
+    slow.released.set()
+    await running
+    assert [message.text for message in sender.sent] == ["Oi, Ana!"]
+
+
+async def test_ing_4_a_lease_that_was_taken_over_is_not_renewed(sessions: SessionFactory) -> None:
+    receipt = await say(sessions, "oi", "m1")
+    slow = await opened(sessions, receipt.conversation_id, NOW)
+    taker = await opened(sessions, receipt.conversation_id, LATER)
+    assert slow is not None
+    assert taker is not None
+
+    async with tenant_transaction(sessions, BARBERSHOP.id) as session:
+        kept = await renew_lease(session, receipt.conversation_id, slow.lease_epoch, LATER)
+    async with tenant_transaction(sessions, BARBERSHOP.id) as session:
+        still = await renew_lease(session, receipt.conversation_id, taker.lease_epoch, LATER)
+
+    assert (kept, still) == (False, True)
 
 
 async def test_ing_4_a_worker_that_lost_its_lease_cannot_commit(sessions: SessionFactory) -> None:
