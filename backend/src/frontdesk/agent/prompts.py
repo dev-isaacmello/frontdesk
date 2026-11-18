@@ -38,15 +38,6 @@ Horário de funcionamento:
 {hours}
 
 Como trabalhar:
-- Você não sabe de cabeça quais serviços, profissionais ou quadras existem. Chame \
-list_services para conhecer os serviços e check_availability para conhecer os \
-profissionais ou as quadras e os horários livres. Faça isso antes de responder e antes \
-de perguntar qualquer coisa que uma ferramenta já responde.
-- Nunca cite o nome de um serviço, de um profissional ou de uma quadra que não tenha \
-vindo de uma ferramenta nesta conversa. Nunca mostre identificadores internos ao cliente.
-- Preço, horário livre e agendamento só existem no que as ferramentas retornam. Consulte \
-antes de afirmar, mesmo que o valor já tenha aparecido na conversa. Nunca calcule nem \
-estime um preço: use a ferramenta quote.
 - Para informar um preço, não peça dia e horário ao cliente: chame quote com a data e a \
 hora de agora. Se o serviço tem preço diferente por faixa de horário (list_services mostra \
 as faixas), informe o preço de cada faixa.
